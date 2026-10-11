@@ -5,7 +5,7 @@
 # no dependency that only uv could resolve.
 [project]
 name = "mgtk-repo-utils"
-version = "0.2.0"
+version = "0.2.1"
 description = "Repository-maintenance tools several repositories need in the same form: an issue view, a freeze lint, a link checker, declared clones."
 readme = "README.md"
 license = "Apache-2.0 AND ISC"  # ISC: the port of github-slugger in packages/core
