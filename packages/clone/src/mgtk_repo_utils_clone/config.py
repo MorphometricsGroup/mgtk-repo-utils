@@ -4,9 +4,8 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from mgtk_repo_utils import __version__
 from mgtk_repo_utils.config import ConfigError, Table
 from mgtk_repo_utils.report import message
 from mgtk_repo_utils.tool import TableSpec
@@ -18,7 +17,29 @@ PLACEHOLDER_RE = re.compile(r"\{([A-Za-z0-9_-]+)\}")
 SCHEME_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
 # C0 and C1 controls, and the line and paragraph separators: `str.splitlines()` breaks on them.
 CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
-SOURCE_KEYS = ("file", "entries", "root", "url", "id", "aliases", "dir", "local", "exclude")
+SOURCE_KEYS = (
+    "name",
+    "file",
+    "entries",
+    "root",
+    "url",
+    "id",
+    "aliases",
+    "dir",
+    "local",
+    "exclude",
+    "defaults",
+    "sets",
+)
+ROOT_KEYS = ("by", "map")
+
+
+@dataclass(frozen=True)
+class RoutedRoot:
+    """A root chosen by an entry's value: `root = { by = "<key>", map = { <value> = "<root>" } }`."""
+
+    by: str  # key holding the value that selects the root
+    map: dict[str, str]  # value -> a name in CloneConfig.roots
 
 
 @dataclass(frozen=True)
@@ -26,13 +47,21 @@ class SourceConfig:
     name: str  # `clone.sources[<n>]`, for messages
     file: str
     entries: str
-    root: str  # a name in CloneConfig.roots
+    root: str | RoutedRoot  # a name in CloneConfig.roots, or a routed root
     url: str  # template with `{key}` placeholders
     id: str  # key holding the id; "" = the URL's basename
     aliases: str  # key holding further ids; "" = none
     dir: str  # "id" | "url"
     local: str  # key holding a declared deviation; "" = none
     exclude: tuple[str, ...]
+    declared: str = ""  # the `name` key; "" = none
+    defaults: dict[str, str] = field(default_factory=dict)  # for `root.by` and `sets` only
+    sets: dict[str, dict[str, tuple[str, ...]]] = field(default_factory=dict)  # set -> condition
+
+    @property
+    def display(self) -> str:
+        """What reports call the source: its declared name, else its position."""
+        return self.declared or self.name
 
 
 @dataclass(frozen=True)
@@ -118,6 +147,21 @@ def _parse_clone(table: Table, lang: str) -> CloneConfig:
         _parse_source(Table(raw, f"{table.dotted('sources')}[{index}]", lang, SOURCE_KEYS), roots)
         for index, raw in enumerate(raw_sources)
     )
+    declared: dict[str, str] = {}
+    for source in sources:
+        if not source.declared:
+            continue
+        if source.declared in declared:
+            raise ConfigError(
+                message(
+                    lang,
+                    "cfg-clone-name-duplicate",
+                    name=f"{source.name}.name",
+                    value=repr(source.declared),
+                    other=declared[source.declared],
+                )
+            )
+        declared[source.declared] = source.name
     return CloneConfig(roots=roots, urls=urls, sources=sources)
 
 
@@ -135,14 +179,11 @@ def _parse_source(table: Table, roots: dict[str, str]) -> SourceConfig:
         raise ConfigError(
             message(lang, "cfg-clone-entries", name=table.dotted("entries"), value=repr(entries))
         )
-    if isinstance(table.raw["root"], dict):
+    root = _parse_root(table, roots)
+    declared = table.string("name", "")
+    if table.has("name") and not KEY_RE.fullmatch(declared):
         raise ConfigError(
-            message(lang, "cfg-clone-root-table", name=table.dotted("root"), version=__version__)
-        )
-    root = table.string("root", "")
-    if root not in roots:
-        raise ConfigError(
-            message(lang, "cfg-clone-root-unknown", name=table.dotted("root"), value=repr(root))
+            message(lang, "cfg-clone-name", name=table.dotted("name"), value=repr(declared))
         )
     url = table.string("url", "")
     outside = PLACEHOLDER_RE.sub("", url)
@@ -167,9 +208,71 @@ def _parse_source(table: Table, roots: dict[str, str]) -> SourceConfig:
         dir=table.enum("dir", "id", ("id", "url")),
         local=keys["local"],
         exclude=table.strings("exclude", ()),
+        declared=declared,
+        defaults=_parse_defaults(table),
+        sets=_parse_sets(table),
     )
 
 
+def _declared_root(name: str, value: str, roots: dict[str, str], lang: str) -> str:
+    if value not in roots:
+        raise ConfigError(message(lang, "cfg-clone-root-unknown", name=name, value=repr(value)))
+    return value
+
+
+def _parse_root(table: Table, roots: dict[str, str]) -> str | RoutedRoot:
+    lang = table.lang
+    if not isinstance(table.raw["root"], dict):
+        return _declared_root(table.dotted("root"), table.string("root", ""), roots, lang)
+    routed = table.table("root", ROOT_KEYS)
+    assert routed is not None
+    for key in ROOT_KEYS:
+        if not routed.has(key):
+            raise ConfigError(message(lang, "cfg-required", name=routed.dotted(key)))
+    by = routed.string("by", "")
+    if not KEY_RE.fullmatch(by):
+        raise ConfigError(message(lang, "cfg-clone-by", name=routed.dotted("by"), value=repr(by)))
+    mapping_table = routed.table("map", None)
+    assert mapping_table is not None
+    if not mapping_table.raw:
+        raise ConfigError(message(lang, "cfg-clone-empty", name=routed.dotted("map")))
+    mapping = {
+        value: _declared_root(
+            mapping_table.dotted(value), mapping_table.string(value, ""), roots, lang
+        )
+        for value in mapping_table.raw
+    }
+    return RoutedRoot(by=by, map=mapping)
+
+
+def _parse_defaults(table: Table) -> dict[str, str]:
+    defaults = table.table("defaults", None)
+    if defaults is None:
+        return {}
+    return {key: defaults.string(key, "") for key in defaults.raw}
+
+
+def _parse_sets(table: Table) -> dict[str, dict[str, tuple[str, ...]]]:
+    lang = table.lang
+    sets = table.table("sets", None)
+    if sets is None:
+        return {}
+    parsed: dict[str, dict[str, tuple[str, ...]]] = {}
+    for set_name in sets.raw:
+        if not KEY_RE.fullmatch(set_name):
+            raise ConfigError(
+                message(lang, "cfg-clone-set-name", name=sets.name, value=repr(set_name))
+            )
+        condition = sets.table(set_name, None)
+        assert condition is not None
+        parsed[set_name] = {}
+        for key in condition.raw:
+            if not KEY_RE.fullmatch(key):
+                raise ConfigError(
+                    message(lang, "cfg-clone-set-key", name=condition.name, value=repr(key))
+                )
+            parsed[set_name][key] = condition.check_strings(condition.raw[key], condition.dotted(key))
+    return parsed
 
 
 TABLE = TableSpec("clone", ("roots", "urls", "sources"), _parse_clone)

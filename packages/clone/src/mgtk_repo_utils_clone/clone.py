@@ -328,16 +328,59 @@ def run(config: Config, name: str, update: bool) -> tuple[list[str], int]:
         raise ToolError(message(config.lang, exc.msg_id, **exc.params)) from exc
 
 
+def run_set(config: Config, name: str, update: bool) -> int:
+    """Handle each entry of the set `name`; returns the highest exit code.
+
+    A failure stops that entry only. Each entry's report is printed as it finishes. An error
+    that ends an entry (a missing root, say) is printed once, however many entries it ends.
+    """
+    resolution = registry.load(config, TOOL)
+    if not resolution.declares_set(name):
+        raise ToolError(
+            message(
+                config.lang,
+                "resolve-set-unknown",
+                name=name,
+                known=registry.list_names(list(resolution.set_names), config.lang),
+            )
+        )
+    code = 0
+    printed: set[str] = set()
+    for entry in resolution.set_entries(name):
+        try:
+            lines, entry_code = _apply(config, resolution, entry, update)
+        except (_Fail, ToolError) as exc:
+            text = (
+                message(config.lang, exc.msg_id, **exc.params) if isinstance(exc, _Fail) else str(exc)
+            )
+            if text not in printed:
+                printed.add(text)
+                print(f"mgtk-repo-utils: {TOOL}: {text}", file=sys.stderr, flush=True)
+            code = max(code, 2)
+            continue
+        print("\n".join(lines), flush=True)
+        code = max(code, entry_code)
+    return code
+
+
 def _handle(config: Config, name: str, update: bool) -> tuple[list[str], int]:
     lang = config.lang
     resolution = registry.load(config, TOOL)
     entry = resolution.find(name)
     if entry is None:
         raise ToolError(message(lang, "resolve-unknown", id=name))
-    attached = resolution.problems_for(entry)
     # An alias collision can exclude an entry; its problems say so, so they come first.
-    if entry.excluded and not attached:
-        raise ToolError(message(lang, "resolve-excluded", id=name, source=entry.source.name))
+    if entry.excluded and not resolution.problems_for(entry):
+        raise ToolError(message(lang, "resolve-excluded", id=name, source=entry.source.display))
+    return _apply(config, resolution, entry, update)
+
+
+def _apply(
+    config: Config, resolution: registry.Resolution, entry: Entry, update: bool
+) -> tuple[list[str], int]:
+    """The steps of design section 16 for one entry."""
+    lang = config.lang
+    attached = resolution.problems_for(entry)
     report = Report(TOOL, lang)
 
     # 1. Declaration
@@ -397,7 +440,14 @@ def build_parser() -> argparse.ArgumentParser:
         "there. Writes only strictly inside a declared root; uses the network and the "
         "machine's git credentials.",
     )
-    parser.add_argument("id", help="an id or alias of an entry")
+    parser.add_argument("id", nargs="?", help="an id or alias of an entry")
+    parser.add_argument(
+        "--set",
+        dest="set_name",
+        metavar="NAME",
+        help="every entry of a set, in order; a failure stops that entry only",
+    )
+    parser.add_argument("--all", action="store_true", help="every entry of the set `all`")
     parser.add_argument(
         "--update",
         action="store_true",
@@ -409,9 +459,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str], cwd: Path | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if (args.id is not None) + (args.set_name is not None) + args.all != 1:
+        parser.error(message("en", "clone-usage"))
     try:
         config = load_for_tool(args, TOOL, cwd or Path.cwd())
+        if args.id is None:
+            return run_set(config, "all" if args.all else args.set_name, args.update)
         lines, code = run(config, args.id, args.update)
     except ToolError as exc:
         print(f"mgtk-repo-utils: {exc}", file=sys.stderr)

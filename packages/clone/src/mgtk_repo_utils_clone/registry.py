@@ -22,7 +22,7 @@ from mgtk_repo_utils.config import Config
 from mgtk_repo_utils.patterns import glob_regex
 from mgtk_repo_utils.report import ERROR, Problem, ToolError, message
 
-from .config import CONTROL_RE, PLACEHOLDER_RE, VARIABLE_RE, CloneConfig, SourceConfig
+from .config import CONTROL_RE, PLACEHOLDER_RE, VARIABLE_RE, CloneConfig, RoutedRoot, SourceConfig
 
 
 def clone_config(config: Config) -> CloneConfig:
@@ -47,6 +47,7 @@ class Entry:
     root: str  # the source's root, or the deviation's longest-matching root
     excluded: bool
     destination: str | None  # declared text: the deviation, or `<root>/<dir>`
+    sets: frozenset[str] = frozenset()  # the source's sets the entry belongs to
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -65,10 +66,19 @@ class Resolution:
     sources: int
     _by_name: Mapping[str, Entry]
     _attached: Mapping[int, tuple[Problem, ...]]
+    set_names: tuple[str, ...] = ()  # every set some source declares, in first-declared order
 
     def find(self, name: str) -> Entry | None:
         """The entry whose id or alias is `name`, excluded entries included."""
         return self._by_name.get(name)
+
+    def declares_set(self, name: str) -> bool:
+        """Whether any source declares the set `name`."""
+        return name in self.set_names
+
+    def set_entries(self, name: str) -> list[Entry]:
+        """The entries of the set `name`: source order, then entry order."""
+        return [entry for entry in self.entries if name in entry.sets]
 
     def problems_for(self, entry: Entry) -> list[Problem]:
         """The problems that attach to `entry` (design section 16, step 1)."""
@@ -199,7 +209,7 @@ def _read_registry(config: Config, source: SourceConfig, tool: str) -> object:
                 "resolve-file-unreadable",
                 path=source.file,
                 detail=exc.strerror or exc,
-                source=source.name,
+                source=source.display,
             )
         ) from exc
     except yaml.YAMLError as exc:
@@ -250,7 +260,7 @@ def _walk(
             found.append((position, value))
         elif value is not None:
             errors.append(
-                (position, "walk-final", {"kind": _kind(lang, True, value), "source": source.name})
+                (position, "walk-final", {"kind": _kind(lang, True, value), "source": source.display})
             )
         return
     key, is_list = segments[0]
@@ -259,7 +269,7 @@ def _walk(
             (
                 position,
                 "walk-key",
-                {"key": key, "kind": _kind(lang, True, value), "source": source.name},
+                {"key": key, "kind": _kind(lang, True, value), "source": source.display},
             )
         )
         return
@@ -275,7 +285,7 @@ def _walk(
             (
                 child_position,
                 "walk-list",
-                {"key": key, "kind": _kind(lang, True, child), "source": source.name},
+                {"key": key, "kind": _kind(lang, True, child), "source": source.display},
             )
         )
         return
@@ -350,6 +360,16 @@ def _make_entry(
         name in source.exclude for name in ((ident,) + aliases)
     )
 
+    # root: a name, or the one the entry's value selects through `map` (check 10)
+    selected: object = None
+    chosen: str | None = None
+    if isinstance(source.root, RoutedRoot):
+        selected = _with_default(mapping, source.root.by, source)
+        if isinstance(selected, str):
+            chosen = source.root.map.get(selected)
+    else:
+        chosen = source.root
+
     def built(**fields: object) -> Entry:
         defaults: dict[str, object] = {
             "index": index,
@@ -361,7 +381,7 @@ def _make_entry(
             "url": url,
             "dir": None,
             "deviation": None,
-            "root": source.root,
+            "root": chosen or "",
             "excluded": excluded,
             "destination": None,
         }
@@ -382,6 +402,14 @@ def _make_entry(
         if kind != "name-url" and text.startswith("-"):
             problem("entry-dash", kind=message(lang, kind), value=_show(text))
 
+    if chosen is None:
+        assert isinstance(source.root, RoutedRoot)
+        if isinstance(selected, str):
+            problem("entry-route-unmapped", key=source.root.by, value=_show(selected))
+        else:
+            by = source.root.by
+            problem("entry-route", key=by, kind=_kind(lang, by in mapping, mapping.get(by)))
+
     # directory
     dir_name = ident if source.dir == "id" else (basename(url) if url is not None else None)
     if dir_name is not None and not _dir_ok(dir_name):
@@ -396,9 +424,9 @@ def _make_entry(
 
     # declared deviation
     roots = clone.roots
-    default = f"{roots[source.root]}/{dir_name}" if dir_name is not None else None
+    default = f"{roots[chosen]}/{dir_name}" if dir_name is not None and chosen else None
     deviation: str | None = None
-    root_name = source.root
+    root_name = chosen or ""
     destination = default
     raw = mapping.get(source.local) if source.local else None
     if raw is not None:
@@ -418,8 +446,33 @@ def _make_entry(
                 if raw == default:
                     problem("local-default", value=_show(raw), key=source.local)
 
-    entry = built(dir=dir_name, deviation=deviation, root=root_name, destination=destination)
+    entry = built(
+        dir=dir_name,
+        deviation=deviation,
+        root=root_name,
+        destination=destination if chosen else None,
+        sets=_memberships(mapping, source),
+    )
     return entry, pending
+
+
+def _with_default(mapping: dict, key: str, source: SourceConfig) -> object:
+    """The entry's value of `key`, or the source's default where it is absent or null."""
+    value = mapping.get(key)
+    return source.defaults.get(key) if value is None else value
+
+
+def _memberships(mapping: dict, source: SourceConfig) -> frozenset[str]:
+    """The sets whose condition the entry meets: a listed key's value, a string, is among the values."""
+    member = set()
+    for name, condition in source.sets.items():
+        for key, values in condition.items():
+            value = _with_default(mapping, key, source)
+            if not (isinstance(value, str) and value in values):
+                break
+        else:
+            member.add(name)
+    return frozenset(member)
 
 
 def load(config: Config, tool: str = "resolve") -> Resolution:
@@ -446,7 +499,7 @@ def load(config: Config, tool: str = "resolve") -> Resolution:
         yielded = by_source.setdefault(source.name, [])
         if not found and not errors:
             problems.add(
-                f"{config_name}: {source.name}",
+                f"{config_name}: {source.display}",
                 "source-empty",
                 file=source.file,
                 entries=source.entries,
@@ -465,7 +518,7 @@ def load(config: Config, tool: str = "resolve") -> Resolution:
         for value in dict.fromkeys(source.exclude):
             if value not in known:
                 problems.add(
-                    f"{config_name}: {source.name}", "exclude-unmatched", value=_show(value)
+                    f"{config_name}: {source.display}", "exclude-unmatched", value=_show(value)
                 )
 
     by_name: dict[str, Entry] = {}
@@ -478,7 +531,59 @@ def load(config: Config, tool: str = "resolve") -> Resolution:
         sources=len(clone.sources),
         _by_name=by_name,
         _attached={index: tuple(found) for index, found in problems.attached.items()},
+        set_names=tuple(dict.fromkeys(name for source in clone.sources for name in source.sets)),
     )
+
+
+ROUTE_POSITION = "--route"
+
+
+def route(
+    config: Config, resolution: Resolution, source_name: str, fields: list[str]
+) -> tuple[Entry, list[Problem]]:
+    """The entry `--route` describes, and the problems that attach to it (design section 14).
+
+    The entry is built as the source would build one the registry holds, then checked as if
+    it were added after the registry's own entries: checks 2, 3, 5, 6, 7 and 10 on it, and
+    4 and 8 against the entries already there. The registry's own problems are not reported.
+    """
+    clone = clone_config(config)
+    lang = config.lang
+    source = next((s for s in clone.sources if s.declared and s.declared == source_name), None)
+    if source is None:
+        raise ToolError(
+            message(
+                lang,
+                "route-source-unknown",
+                name=_show(source_name),
+                known=list_names([s.declared for s in clone.sources if s.declared], lang),
+            )
+        )
+    mapping: dict[str, str] = {}
+    for field in fields:
+        key, equals, value = field.partition("=")
+        if not (key and equals):
+            raise ToolError(message(lang, "route-field", field=_show(field)))
+        mapping[key] = value
+    entry, pending = _make_entry(
+        len(resolution.entries), source, ROUTE_POSITION, mapping, clone, lang
+    )
+    if entry.excluded:
+        raise ToolError(
+            message(lang, "resolve-excluded", id=_show(entry.id), source=source.display)
+        )
+    problems = _Problems(lang)
+    for msg_id, params in pending:
+        problems.add(entry.label, msg_id, entry, **params)
+    entries = [*resolution.entries, entry]
+    _check_ids(entries, problems)
+    _check_destinations(entries, clone, problems)
+    return entry, problems.attached.get(entry.index, [])
+
+
+def list_names(names: list[str], lang: str) -> str:
+    """The names as a list for a message, or "none" when there are none."""
+    return ", ".join(f"`{_show(name)}`" for name in names) or message(lang, "none-declared")
 
 
 def _check_ids(entries: list[Entry], problems: _Problems) -> None:

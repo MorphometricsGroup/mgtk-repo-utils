@@ -1,6 +1,8 @@
 # mgtk-repo-utils — design
 
-Status: revision 5.3 (2026-10-11), current for mgtk-repo-utils from 0.1.1.
+Status: revision 6.1 (2026-10-11), current for mgtk-repo-utils from 0.1.1; the
+routing, selection sets and read-only queries of sections 13 to 16 are
+designed for 0.2.0 and implemented on the branch that releases it.
 mgtk-repo-utils is the successor of **repo-kit**
 (`MorphometricsGroup/repo-kit`, releases 0.1.0 to 0.3.0, which shipped as a
 copy committed into each consumer); this document continues repo-kit's design
@@ -327,7 +329,7 @@ Alternatives E to I concern the clone tools of revision 4.
 - **Cons:** this is the risk of the configuration growing into a language; the
   registries met so far need none of it.
 - **Why not chosen:** entry paths are dots and `[]` only, and filtering is by
-  listed values (`exclude`, and `all` in section 13).
+  listed values (`exclude`, and the conditions of `sets` in section 13).
 
 ### H. A static check only, cloning left to people
 - **Approach:** mgtk-repo-utils checks the declarations (unique ids, deviations
@@ -1277,7 +1279,9 @@ the commit a second time.
   release that implements them; until then a release rejects them with a message
   that names its version — `defaults` and `all` as unknown keys, and a
   table-valued `root` with a message of its own, since `root` is a known key
-  whose table form is not yet allowed.
+  whose table form is not yet allowed. **Revision 6:** `name`, the table form
+  of `root`, `defaults` and `sets` arrive in 0.2.0, within schema 1; a file
+  that uses them sets `requires = "0.2"`. The key `all` was never released.
 - A release that changes generated output (view layout, wording) is marked in
   CHANGELOG; consumers regenerate in the same commit that moves the pin.
   **Revision 5.3:** the mark is the commit's body, which release-please
@@ -1312,6 +1316,7 @@ roots = { work = "~/src", ops = "~/src/ops" }     # destination roots, by name
 urls = ["git@github.com:example/*", "git@github.com:example-org/*"]
 
 [[clone.sources]]
+name = "services"                   # optional: the name `--route` uses for this source (revision 6)
 file = "registry/repos.yaml"        # relative to the repository root
 entries = "teams[].services[]"      # dots and [] only
 root = "ops"                        # a name in `roots`
@@ -1324,9 +1329,17 @@ exclude = ["notes"]                 # ids the tools do not handle
 ```
 
 `[clone]` requires `roots`, `urls` and at least one source; a source requires
-`file`, `entries`, `root` and `url`. Defaults: `id = ""`, `aliases = ""`,
-`dir = "id"`, `local = ""`, `exclude = []`. Unknown keys are errors, as
-everywhere (section 4).
+`file`, `entries`, `root` and `url`. Defaults: `name = ""`, `id = ""`,
+`aliases = ""`, `dir = "id"`, `local = ""`, `exclude = []`, `defaults = {}`,
+`sets = {}`. Unknown keys are errors, as everywhere (section 4).
+
+- **`name`** (revision 6) names the source on the command line (`resolve
+  --route <name>`, section 14) and in reports and JSON output, where a source
+  without a name is called by its position, `clone.sources[<n>]`. It matches
+  `[A-Za-z0-9_-]+` and is unique among the sources (a configuration error
+  otherwise). A source has no name unless it needs one: positions move when a
+  source is added, so the key exists for the consumer that calls a source
+  from a script.
 
 - **`roots`** maps a name (`[A-Za-z0-9_-]+`) to a path in one of three forms:
   `~/<path>`, under the directory that `HOME` names; `/<path>`; or `$NAME`
@@ -1410,34 +1423,50 @@ command line. Every id is unique across all sources, excluded entries
 included, compared exactly; `resolve` and `clone` accept any of them and
 report the entry by its id.
 
-**Keys for routed and bulk-cloned entries (later).** Designed now, so that a
-registry with routing and a bulk set can be judged against this design, and
-implemented in the release in which such a consumer adopts the tools
-(section 12):
+**Keys for routed entries and selection sets (revision 6; 0.2.0).** Designed
+in revision 4 as "later" and implemented in the release in which the first
+consumer with such a registry adopts the tools (section 12, rollout step 13):
 
 ```toml
 [[clone.sources]]                   # with roots `work` and `templates` declared
+name = "projects"
 file = "registry/projects.yaml"
 entries = "projects[]"
 root = { by = "class", map = { project = "work", template = "templates" } }
 defaults = { class = "project" }
-all = { status = ["active"], class = ["project"] }
+sets = { all = {}, active = { status = ["active"] }, projects = { status = ["active"], class = ["project"] } }
 id = "name"
 aliases = "aliases"
 url = "{url}"
 ```
 
 - `root` as a table: the entry's value of `by` selects the root through
-  `map`; a value missing from `map` is a problem.
+  `map`; a value missing from `map` is a problem (section 15, check 10). `by`
+  matches `[A-Za-z0-9_-]+`, every value of `map` is a declared root name, and
+  `map` is not empty (configuration errors otherwise).
 - `defaults`: values used where an entry lacks the key or holds null, read by
-  `root.by` and `all` only.
-- `all`: the entry belongs to the bulk set (`--all`) when, for every key
-  listed, its value is one of the listed values. A source without `all`
-  contributes nothing to the bulk set, and a configuration with no `all`
-  rejects `--all` (exit 2). Excluded entries never join the bulk set.
-- Values in `map`, `defaults` and `all` are strings and match only string
-  values of the entry. An entry value of another type — `false`, or `on`,
-  which YAML 1.1 reads as a boolean — is a problem, not a match.
+  `root.by`, `sets` and `--route` only; never by `id`, `aliases`, `local` or
+  the URL placeholders, which describe the entry itself.
+- `sets`: named selections of the source's entries. A set's condition is a
+  table `key = [values]`; the entry belongs when, for every key listed, its
+  value (after `defaults`) is one of the listed values. An empty condition,
+  `{}`, lists no key and therefore admits every entry of the source: it is the
+  natural spelling of "all of this source", not a special case. Set names
+  match `[A-Za-z0-9_-]+`; a name declared by several sources denotes the
+  union, in source order then entry order; a source without `sets` belongs to
+  no set. `all` is an ordinary name that `--all` abbreviates (`--set all`), so
+  a configuration that declares no `all` rejects `--all` as it rejects any
+  undeclared set (exit 2). Excluded entries never belong to a set.
+- Values in `map`, `defaults` and the conditions of `sets` are strings and
+  match only string values of the entry. An entry value of another type —
+  `false`, or `on`, which YAML 1.1 reads as a boolean — is a problem for
+  `root.by` (check 10) and a non-match for a set.
+
+**Correction (2026-10-11, revision 6).** Revision 4 designed a single bulk set
+under the key `all`. Before it was implemented, the first consumer to need it
+asked for several named selections with different cuts of one registry; `all`
+became one name among them. Nothing shipped under the old key, so no
+configuration changes.
 
 **Dependency.** `registry.py` imports PyYAML inside the function that loads a
 registry, so no other tool imports it, and a repository without PyYAML keeps
@@ -1457,34 +1486,81 @@ way, and the remedy it names is to reinstall the release.
 
 ```sh
 mgtk-repo-utils resolve <id>
+mgtk-repo-utils resolve --set <name>                       # revision 6; `--all` is `--set all`
+mgtk-repo-utils resolve --route <source> <key>=<value>...  # revision 6: an entry the registry does not hold
+mgtk-repo-utils resolve --destination-root <name>          # revision 6: a destination root, expanded
 mgtk-repo-utils resolve --check
-mgtk-repo-utils resolve --all        # later, with `all`
+mgtk-repo-utils resolve ... --format json                  # revision 6: every form but --check
 ```
 
 `resolve <id>` prints one line, `<id>\t<dest>\t<url>`: the entry's id, its
 destination with the root expanded, and its URL. None of the three can hold a
 tab or a newline (section 15, checks 2, 3 and 6). The line is the one output
 not in the report format of section 3, because scripts read it; problems and
-errors go to standard error. Without `--check` or `--all`, `resolve` takes
-exactly one id; none, more than one, or an unknown or excluded id is a usage
-error (exit 2). An entry with a problem that attaches to it (section 16,
-step 1) exits 1 and prints it.
+errors go to standard error. The forms are exclusive: exactly one of `<id>`,
+`--set`, `--route`, `--destination-root` and `--check`; none, two, more than
+one id, or an unknown or excluded id is a usage error (exit 2). An entry with a problem that
+attaches to it (section 16, step 1) exits 1 and prints it.
 
 Expansion: `~` becomes the value of `HOME`, read from the environment and
 never from the password database; `$NAME` becomes the variable's value. Both
 must be absolute paths without control characters — unset, empty, relative or
 holding a control character is exit 2, naming the variable and the root. Only
 the requested entry's root is expanded, so a machine that lacks another root's
-variable still resolves this entry; `--all` expands every root first. The
-destination is the expanded root without a trailing `/`, then `/<dir>`; or the
-expanded deviation. Symlinks are not resolved.
+variable still resolves this entry; `--set` expands the roots its entries use.
+The destination is the expanded root without a trailing `/`, then `/<dir>`;
+or the expanded deviation. Symlinks are not resolved.
 
 `resolve` writes nothing, reads nothing outside the repository and uses no
 network. It does not look at the destination: whether the root exists and what
 the destination holds are `clone`'s concern.
 
-`resolve --check` is the static check of section 15. `--all` prints one line
-per entry of the bulk set.
+`resolve --check` is the static check of section 15.
+
+**`--set <name>`** (revision 6) prints one line per entry of the set (section
+13), in source order then entry order. An entry with a problem that attaches
+to it is printed as that problem on standard error instead of a line, and the
+exit code is 1 after the whole set has been printed; an undeclared name is a
+usage error. `--all` is `--set all`.
+
+**`--route <source> <key>=<value>...`** (revision 6) answers, for an entry the
+registry does not hold yet, where `clone` would place it and whether it
+would be a valid declaration — for the consumer whose scripts create
+repositories and want the same rule as the tool, kept in one place. `<source>`
+is a source's `name` (section 13; a source without one cannot be routed), and
+each `<key>=<value>` is a string field of the hypothetical entry, split at the
+first `=`. The entry is built from these fields with the source's `defaults`
+applied and run through the source's rules exactly as a registry entry would
+be: `id` or the URL's basename, `aliases`, the `url` template, `dir`, a
+string or routed `root`, and `local` when the caller gives one (then it is a
+declared deviation and checked as such). The checks of section 15 that attach
+to an entry apply — 2, 3, 5, 6, 7 and 10 — and so do 4 and 8 against the
+registry's existing entries: an id already declared, or a destination that
+equals, contains or lies inside an existing one, is a problem, since the
+caller is about to add this entry. Output is the same line as `resolve
+<id>`; a problem exits 1 on standard error. `--route` reads the registry to
+check against it and writes nothing.
+
+**`--destination-root <name>`** (revision 6) prints the expanded path of a
+declared destination root (`clone.roots`), one line without a trailing `/`;
+an undeclared name is a usage error, and an unset or malformed variable is
+exit 2 as above. **Correction (2026-10-11, revision 6.1, at
+implementation).** Revision 6 spelled this form `--root <name>`, which is
+the common option for the repository root (section 3): the two meanings
+would have shared one flag and been told apart only by the other arguments,
+which section 3 keeps apart on purpose. The form is spelled by the name
+section 3 gives these directories.
+
+**`--format json`** (revision 6) replaces the line output of `<id>`, `--set`
+and `--route` by one JSON array on standard output — one object per entry,
+in the same order, with the fields `id`, `destination`, `url`, `root` (the
+root's name), `source` (the source's name, or its position), `dir` and
+`deviation` (true when the destination is a declared deviation) — and that of
+`--destination-root` by one object `{"root": <name>, "path": <path>}`. Problems and usage
+errors stay on standard error as text, with the same exit codes; nothing is
+printed on standard output when the exit code is not 0, so a consumer that
+parses the output never parses a partial array. `--check` and `clone` keep
+the report format of section 3: they are read by people.
 
 ### 15. Static check (`resolve --check`)
 
@@ -1528,10 +1604,16 @@ reported against `mgtk-repo-utils.toml`. Any problem exits 1:
    roots of section 13's example, a `work` entry whose directory is `ops`
    defaults to `~/src/ops`, which is the `ops` root.
 9. An `exclude` id that matches no entry of its source.
+10. (revision 6) For a source whose `root` is a table: an entry whose value
+    for `by` (after `defaults`) is missing, not a string, or not a key of
+    `map`.
 
 Excluded entries take part in 4 and 9 only, except that an entry whose id
 cannot be determined is reported under 2, since nothing can match it against
-`exclude`. A missing or unreadable registry file, a parse error (with PyYAML's
+`exclude`. The configuration side of revision 6 — `name` unique and
+well-formed, `by` and the set names well-formed, `map` non-empty and naming
+declared roots, string values throughout — is validated with the table
+(section 4), so it is a configuration error (exit 2), not a problem. A missing or unreadable registry file, a parse error (with PyYAML's
 line), a registry whose top level is not a mapping and a `[clone]` table that
 fails validation are configuration errors (exit 2).
 
@@ -1545,12 +1627,18 @@ existing destination is never overwritten (step 5).
 
 ```sh
 mgtk-repo-utils clone <id> [--update]
-mgtk-repo-utils clone --all [--update]    # later, with `all`
+mgtk-repo-utils clone --set <name> [--update]    # revision 6; `--all` is `--set all`
 ```
 
-`clone` takes exactly one id; none, more than one, or an unknown or excluded
-id is a usage error (exit 2), as for `resolve`. For the entry that `<id>`
-names, in order, stopping at the first failure:
+`clone` takes exactly one id or one set; none, both, more than one id, or an
+unknown or excluded id or an undeclared set is a usage error (exit 2), as for
+`resolve`. **`--set <name>`** (revision 6) applies the steps below to each
+entry of the set in turn, in source order then entry order; a failure stops
+that entry only, the next entry is still attempted, each entry's report is
+printed as it finishes, and the exit code is the highest over the entries
+(the rule of `check`, section 3). A missing root (step 2) is reported once per
+root. For the entry that `<id>` names, in order, stopping at the first
+failure:
 
 1. **Declaration.** The entry has none of the problems of section 15 that
    attach to it: checks 2, 3, 5, 6 and 7 on the entry itself, check 4 when the
@@ -1730,7 +1818,7 @@ For the clone tools (sections 13 to 17):
 | Archetype | sources | id and directory | url | roots | notes |
 |---|---|---|---|---|---|
 | Registry of slugs by kind | one file, one source per key that holds entries (for example `teams[].lead`, `teams[].services[]`, `shared[]`) | the URL's basename for both | `git@github.com:{repo}.git` | `~/…` paths, one per kind of entry | deviations in a `local` field; entries kept outside every root on purpose are excluded; no bulk set |
-| Registry of URLs with routing | one source per file | `name` with `aliases`, or `slug`; the directory is the URL's basename where slugs differ from repository names | `{url}` | `$NAME`, set per machine | `root` routed by a field with `defaults` for an absent value, and a bulk set filtered by `all` — keys implemented later |
+| Registry of URLs with routing | one source per file | `name` with `aliases`, or `slug`; the directory is the URL's basename where slugs differ from repository names | `{url}` | `$NAME`, set per machine | `root` routed by a field with `defaults` for an absent value; named `sets` (`all`, and one per cut of the registry); `name` on each source so that the consumer's scripts can ask `--route` where a new entry goes (revision 6, 0.2.0) |
 
 ## Tests
 
@@ -1763,6 +1851,21 @@ For the clone tools (sections 13 to 17):
   and malformed braces; URL basenames (`x.git`, `y.git/`, `x/.git`, a trailing
   `/`, a scp-like URL without `/`), each against the directory git chooses;
   a root variable unset for another entry's root.
+- Routing and sets (revision 6): a routed root with a value present, absent
+  (`defaults`), null (`defaults`) and missing from `map` (check 10); a
+  non-string value for `by`; sets with an empty condition, several keys, a
+  name declared by two sources, an undeclared name, `--all` without `all`;
+  excluded entries absent from every set; `--set` with one entry that has a
+  problem (printed, exit 1, the others still listed).
+- `--route` (revision 6): an entry that resolves; one whose id collides with
+  a registry entry (check 4) and one whose destination nests in an existing
+  one (check 8); `local=` given and checked (6, 7); a routed root chosen by
+  the given field and by `defaults`; a source without `name`; a malformed
+  `key=value`; the JSON object's fields.
+- `--destination-root` and `--format json` (revision 6): the expanded root;
+  an unset variable (exit 2, nothing on standard output); the array for `<id>`, `--set`
+  and `--route` with the same order as the lines; no standard output on a
+  non-zero exit.
 - Static check: one fixture per problem of section 15; excluded entries in
   collisions and unmatched excludes; destinations that differ only in case;
   nested destinations and a destination equal to a root; tabs and newlines in
@@ -1817,7 +1920,7 @@ For the clone tools (sections 13 to 17):
 | `--update` fetches from a remote nobody checked | Low | High | `pull` names `origin` after its URL is checked and does not recurse into submodules; a test with a branch that tracks another remote |
 | A printed remedy carries shell syntax from a registry | Low | Medium | Values in printed commands are quoted; ids and URLs with whitespace or control characters are problems (section 15) |
 | A copy becomes a place that handles credentials | Low | High | No option or key takes one; the environment passes through; a test records what the git calls receive |
-| Configuration grows to fit one registry's routing | Medium | Medium | Routing and the bulk set are values (`root.by`, `defaults`, `all`), implemented only when a registry that needs them adopts the tools |
+| Configuration grows to fit one registry's routing | Medium | Medium | Routing and the selection sets are values (`root.by`, `defaults`, the conditions of `sets`), implemented when the first registry that needs them adopted the tools (revision 6) |
 | `check` fails where PyYAML is absent | Low from mgtk-repo-utils 0.1.0 (a declared dependency); Medium at adoption of 0.3.x | Low | Only with `[clone]`; exit 2 names the remedy; `check` still runs the other tools and `pin` |
 
 ## Rollout
@@ -1895,6 +1998,16 @@ The distribution change (revision 5):
     update`. Until a consumer moves, its repo-kit 0.3.x copy keeps working.
     When the last has moved, repo-kit's repository is archived.
 
+Routing, sets and read-only queries (revision 6):
+
+13. Implement the keys of section 13 (`name`, the table form of `root`,
+    `defaults`, `sets`), `resolve --set`, `--route`, `--destination-root`
+    and `--format json`, and `clone --set`, with the tests above, on one feature branch
+    whose commits are `feat(clone):` and `feat(resolve):`; release-please
+    releases 0.2.0. The consumer that asked switches its scripts to
+    `resolve`/`clone` and retires its own; the one difference by design
+    stays: its scripts created a missing root, and `clone` does not.
+
 ## Open questions
 
 - Whether `verify` should also accept a list of intentional local
@@ -1931,6 +2044,8 @@ The distribution change (revision 5):
   whose scripts create repositories where `clone` would later place them. It
   belongs in `resolve` when such a consumer adopts the tools, so that the
   mapping keeps one home; it is not designed yet.
+  **Designed (2026-10-11, revision 6):** `resolve --route <source>
+  <key>=<value>...` and `resolve --destination-root <name>`, section 14.
 - To confirm at implementation: that the variables dropped for git calls on a
   destination (section 17) match the set git itself clears before it runs a
   command in a submodule.
@@ -1943,6 +2058,23 @@ The distribution change (revision 5):
 
 ## Revision history
 
+- 2026-10-11, revision 6: routed roots and selection sets, and read-only
+  queries, designed for 0.2.0 at the request of the first consumer with such
+  a registry (its decision to replace its own scripts came the same day).
+  Section 13: `name` on a source; the table form of `root` and `defaults`
+  from revision 4; `sets` of named selections in place of the single `all`
+  (corrected before release; `all` is now a name `--all` abbreviates; an
+  empty condition admits every entry). Section 14: `--set`, `--route` (an
+  entry the registry does not hold, checked against the registry as the
+  caller is about to add it), `--destination-root` (spelled `--root` until
+  revision 6.1 corrected the collision with the common option), `--format
+  json` (one array, nothing on standard output when the exit code is not 0). Section 15: check 10 and
+  the configuration-side validation. Section 16: `clone --set` continues
+  past a failing entry and exits with the highest code. Tests, section 12
+  (`requires = "0.2"`), the archetype table, rollout step 13 and the open
+  question follow. The decisions (an empty condition as "all of this source",
+  a `name` key rather than the file as the handle, a JSON array rather than
+  lines, continuing past failures) were taken with the maintainer.
 - 2026-10-11, revision 5.3: dated corrections after the first adopter outside
   this repository's hook runner found that pre-commit cannot install the
   release — one distribution instead of one per tool (sections 1, 2 and 12),

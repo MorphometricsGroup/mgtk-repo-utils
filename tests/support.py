@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -15,6 +16,15 @@ CONFIG_FILE = "mgtk-repo-utils.toml"
 PROG = "mgtk-repo-utils"
 # The command as the tests run it: the installed CLI module of this environment.
 COMMAND = [sys.executable, "-m", "mgtk_repo_utils_cli"]
+
+
+def toml_value(value: object) -> str:
+    """A TOML value for a string, boolean, list or (inline) table; JSON covers all but tables."""
+    if isinstance(value, dict):
+        return "{ " + ", ".join(f"{json.dumps(k)} = {toml_value(v)}" for k, v in value.items()) + " }"
+    if isinstance(value, list):
+        return "[" + ", ".join(toml_value(v) for v in value) + "]"
+    return json.dumps(value)
 
 
 def clean_env() -> dict[str, str]:
