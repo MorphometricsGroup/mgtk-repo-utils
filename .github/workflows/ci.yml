@@ -35,8 +35,8 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m venv "$RUNNER_TEMP/fresh"
-      - run: "$RUNNER_TEMP/fresh/bin/pip" install --quiet .
-      - run: "$RUNNER_TEMP/fresh/bin/mgtk-repo-utils" tools
+      - run: '"$RUNNER_TEMP/fresh/bin/pip" install --quiet .'
+      - run: '"$RUNNER_TEMP/fresh/bin/mgtk-repo-utils" tools'
 
   names:
     # The denylist names what must never appear in this repository, so the list
