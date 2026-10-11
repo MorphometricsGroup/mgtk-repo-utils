@@ -8,6 +8,21 @@ a breaking change (`!`), and only a large one gets a page under
 0.1.0 to 0.3.0); its history stays there, and moving a consumer from it is
 [docs/migrations/from-repo-kit.md](docs/migrations/from-repo-kit.md).
 
+## [0.2.0](https://github.com/MorphometricsGroup/mgtk-repo-utils/compare/v0.1.1...v0.2.0) (2026-10-11)
+
+
+### Features
+
+* **clone:** routed roots, defaults and named selection sets ([4ccb242](https://github.com/MorphometricsGroup/mgtk-repo-utils/commit/4ccb242977a0d7ba4331058821e74d36a55a5904))
+* **resolve:** --set, --route, --destination-root and --format json ([71f8886](https://github.com/MorphometricsGroup/mgtk-repo-utils/commit/71f88868bef2feb3e382ff685ee6b2b243eba0d7))
+* routed roots, named sets and read-only queries (design revision 6, 0.2.0) ([96fd503](https://github.com/MorphometricsGroup/mgtk-repo-utils/commit/96fd5030ccfe41177fc8018cdb9d67ac016c9582))
+
+
+### Documentation
+
+* a pull request's title is a plain sentence, not a Conventional Commit ([dff0566](https://github.com/MorphometricsGroup/mgtk-repo-utils/commit/dff0566cf73a486e800c799048119019fc8b5737))
+* **design:** revision 6 — routed roots, selection sets, read-only queries and JSON output for resolve/clone ([86e885b](https://github.com/MorphometricsGroup/mgtk-repo-utils/commit/86e885bf99322b08c46220d57f4f3e8b25b38a6b))
+
 ## [0.1.1](https://github.com/MorphometricsGroup/mgtk-repo-utils/compare/v0.1.0...v0.1.1) (2026-10-11)
 
 
