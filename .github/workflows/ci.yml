@@ -18,11 +18,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - name: The lock matches the project
+        # A release pull request bumps the project's own version, which the lock
+        # also records; its branch refreshes the lock itself (release-please.yml).
+        if: ${{ !startsWith(github.head_ref, 'release-please--') }}
+        run: uv lock --check
       - name: Install the project
-        run: uv sync --locked --python ${{ matrix.python-version }}
+        run: uv sync --frozen --python ${{ matrix.python-version }}
       - name: Run the test suite
         # node is needed only to regenerate the slug fixtures (scripts/dev), not here.
-        run: uv run --python ${{ matrix.python-version }} pytest -q
+        run: uv run --frozen --python ${{ matrix.python-version }} pytest -q
 
   pip-install:
     # A pre-commit hook repository is installed with `pip install .` from its
