@@ -111,8 +111,4 @@ and defects are tracked by its maintainers outside it.
 
 ## Licence
 
-Copyright (c) 2026 Koji Noshita and Morphometrics Group.
-
-Apache-2.0. See [LICENSE](LICENSE). `packages/core` also carries the ISC
-licence of github-slugger, whose algorithm `slug.py` ports
-(`packages/core/LICENSE-github-slugger`).
+Apache-2.0. Copyright (c) 2026 Koji Noshita and Morphometrics Group.
