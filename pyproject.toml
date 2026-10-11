@@ -1,44 +1,47 @@
-# The distribution a consumer installs: the `mgtk-repo-utils` command with
-# `check` and `pin`, depending on every tool at the same commit (design section
-# 1). The repository is also a pre-commit hook repository (.pre-commit-hooks.yaml).
+# The one distribution: the `mgtk-repo-utils` command with `check` and `pin`,
+# and every tool, in one wheel (design section 1, revision 5.3). The repository
+# is also a pre-commit hook repository (.pre-commit-hooks.yaml), so this file
+# must install with pip from its metadata alone: no workspace, no uv sources,
+# no dependency that only uv could resolve.
 [project]
 name = "mgtk-repo-utils"
 version = "0.1.0"
 description = "Repository-maintenance tools several repositories need in the same form: an issue view, a freeze lint, a link checker, declared clones."
 readme = "README.md"
-license = "Apache-2.0"
+license = "Apache-2.0 AND ISC"  # ISC: the port of github-slugger in packages/core
+license-files = ["LICENSE", "LICENSE-github-slugger"]
 requires-python = ">=3.11"
-dependencies = [
-    "mgtk-repo-utils-core",
-    "mgtk-repo-utils-issues-view",
-    "mgtk-repo-utils-freeze-lint",
-    "mgtk-repo-utils-link-check",
-    "mgtk-repo-utils-clone",
-    "pyyaml>=6",
-]
+dependencies = ["pyyaml>=6"]
 
 [project.scripts]
 mgtk-repo-utils = "mgtk_repo_utils_cli:main"
 
+# The tools the command discovers (design section 3). Each lives in its own
+# directory under packages/ so that it can become its own distribution when it
+# moves to another repository; until then they ship together.
+[project.entry-points."mgtk_repo_utils.tools"]
+issues-view = "mgtk_repo_utils_issues_view:TOOL_SPEC"
+freeze-lint = "mgtk_repo_utils_freeze_lint:TOOL_SPEC"
+link-check = "mgtk_repo_utils_link_check:TOOL_SPEC"
+resolve = "mgtk_repo_utils_clone:RESOLVE"
+clone = "mgtk_repo_utils_clone:CLONE"
+
 [dependency-groups]
 dev = ["pytest"]
-
-[tool.uv.workspace]
-members = ["packages/*"]
-
-[tool.uv.sources]
-mgtk-repo-utils-core = { workspace = true }
-mgtk-repo-utils-issues-view = { workspace = true }
-mgtk-repo-utils-freeze-lint = { workspace = true }
-mgtk-repo-utils-link-check = { workspace = true }
-mgtk-repo-utils-clone = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mgtk_repo_utils_cli"]
+packages = [
+    "src/mgtk_repo_utils_cli",
+    "packages/core/src/mgtk_repo_utils",
+    "packages/issues-view/src/mgtk_repo_utils_issues_view",
+    "packages/freeze-lint/src/mgtk_repo_utils_freeze_lint",
+    "packages/link-check/src/mgtk_repo_utils_link_check",
+    "packages/clone/src/mgtk_repo_utils_clone",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

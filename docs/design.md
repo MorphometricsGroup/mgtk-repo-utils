@@ -1,6 +1,6 @@
 # mgtk-repo-utils — design
 
-Status: revision 5.2 (2026-10-11), current for mgtk-repo-utils 0.1.0.
+Status: revision 5.3 (2026-10-11), current for mgtk-repo-utils from 0.1.1.
 mgtk-repo-utils is the successor of **repo-kit**
 (`MorphometricsGroup/repo-kit`, releases 0.1.0 to 0.3.0, which shipped as a
 copy committed into each consumer); this document continues repo-kit's design
@@ -554,6 +554,25 @@ Dropped with the copy, since they came from living inside other trees: no
 YAML file, no dotfile, no `lib`/`lib64`/`build`/`dist` directory, no Markdown
 link leaving the payload, stdlib only, `-B` and the `__main__.py` guard.
 
+**Correction (2026-10-11, revision 5.3).** The layout above described one
+distribution per tool, resolved to one commit through uv workspace sources.
+The first adopter outside this repository's own hook runner measured, the
+same day, that pre-commit installs a `language: python` hook repository with
+`pip install .`, which reads only the standard metadata: it could not
+resolve `mgtk-repo-utils-core` and the tool distributions (`No matching
+distribution found for mgtk-repo-utils-clone`), while prek, which builds hook
+environments with uv, could. The repository therefore ships **one
+distribution**, `mgtk-repo-utils`: its wheel holds every package
+(`src/mgtk_repo_utils_cli` and the five `packages/*/src/*` packages), its only
+dependency is PyYAML, and the per-tool `pyproject.toml` files and the
+workspace are gone. The directories and the entry-point discovery stay: a
+tool that is to live elsewhere becomes its own distribution when it moves,
+not before. Section 2's "members alone" is withdrawn, and section 12's
+lockstep is one version by construction. A packaging test checks that the
+root metadata names no internal distribution and that the wheel lists every
+package, and CI installs the root with pip into a fresh virtual environment,
+the path uv does not exercise.
+
 ### 2. Distribution: the hook repository and the command
 
 Revision 5. There is no copy. A consumer obtains a release in one of two
@@ -635,6 +654,10 @@ tool or names a commit.
 with `#subdirectory=packages/<tool>`, its dependency on core resolved to the
 same commit. No consumer needs this today; it is what makes moving a tool to
 another repository a pin change (alternative L).
+**Correction (2026-10-11, revision 5.3):** withdrawn. There is one
+distribution (section 1); nothing installs with `#subdirectory=`. Moving a
+tool to another repository remains a directory move, followed by giving it
+a `pyproject.toml` of its own there.
 
 **Authentication.** The repository is public, so reading it needs no
 credential; the `https` URL works from any hook runner, CI or machine. Where
@@ -1217,6 +1240,24 @@ the commit a second time.
   from mgtk-repo-utils 0.1.0 every distribution in the workspace carries that version: one
   release, one tag, one `rev` for a consumer (lockstep versions). A change to
   one tool releases the workspace.
+  **Correction (2026-10-11, revision 5.3):** one distribution (section 1), so
+  one version by construction; `pyproject.toml` and `__init__.py` are kept
+  equal by release-please (below).
+- **Releases (revision 5.3).** Work follows GitHub Flow: a branch and a pull
+  request into `main`, which a ruleset protects (pull request required, the
+  CI checks required, no force push, no deletion, linear history). Commits
+  follow Conventional Commits; `feat!:` or a `BREAKING CHANGE:` footer marks a
+  change consumers must act on, and a commit that changes generated output
+  says so in its body. release-please keeps a release pull request up to date
+  from the commits merged since the last tag — the next version in
+  `pyproject.toml` and `__init__.py` (an `x-release-please-version`
+  annotation) and the CHANGELOG entry — and merging it creates the tag and
+  the GitHub release. The CHANGELOG is therefore generated, not written: a
+  consumer-facing procedure goes to `docs/migrations/<topic>.md`, and only
+  for a large change; small ones are followed from the commits. release-please
+  runs with a token of a person or an app, so that CI runs on the release
+  pull request (a pull request opened with the workflow's own token triggers
+  none).
 - `schema` in `mgtk-repo-utils.toml` is 1 for all of 0.x. Within 0.x a configuration
   change that is not backward compatible increments `schema` and is marked in
   CHANGELOG; from 1.0, `schema` changes only with a major release.
@@ -1235,9 +1276,14 @@ the commit a second time.
   whose table form is not yet allowed.
 - A release that changes generated output (view layout, wording) is marked in
   CHANGELOG; consumers regenerate in the same commit that moves the pin.
+  **Revision 5.3:** the mark is the commit's body, which release-please
+  carries into the CHANGELOG entry.
 - A release that adds, removes or renames a distribution, a hook id, a
   subcommand or an option lists it in CHANGELOG; a consumer follows in the
   commit that moves its pin. (Until 0.3.x this bullet listed payload files.)
+  **Revision 5.3:** such a change is a `feat!:` or `fix!:` commit, which
+  release-please lists under breaking changes; the consumer's steps are
+  written only when they are more than the pin.
 - mgtk-repo-utils 0.1.0 is the release that replaces repo-kit's copy. For a
   consumer of repo-kit 0.3.x nothing is compatible in name — the
   configuration file becomes `mgtk-repo-utils.toml`, hook ids become
@@ -1893,6 +1939,13 @@ The distribution change (revision 5):
 
 ## Revision history
 
+- 2026-10-11, revision 5.3: dated corrections after the first adopter outside
+  this repository's hook runner found that pre-commit cannot install the
+  release — one distribution instead of one per tool (sections 1, 2 and 12),
+  with a packaging test and a pip-install job in CI. Releases: GitHub Flow, a
+  ruleset on `main`, Conventional Commits, release-please generating the
+  CHANGELOG and the tag, migration pages only for large changes (section 12),
+  on the maintainer's instruction.
 - 2026-10-11, revision 5.2: 0.1.0 released from `MorphometricsGroup/mgtk-repo-utils`
   and the repository made public the same day, after the review of rollout
   step 9 (background of revision 5, last paragraph; section 2's

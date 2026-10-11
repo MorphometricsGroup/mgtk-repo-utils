@@ -18,11 +18,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: Install the workspace
+      - name: Install the project
         run: uv sync --locked --python ${{ matrix.python-version }}
       - name: Run the test suite
         # node is needed only to regenerate the slug fixtures (scripts/dev), not here.
         run: uv run --python ${{ matrix.python-version }} pytest -q
+
+  pip-install:
+    # A pre-commit hook repository is installed with `pip install .` from its
+    # standard metadata alone (design section 1, revision 5.3); this is the
+    # path prek's uv does not exercise.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m venv "$RUNNER_TEMP/fresh"
+      - run: "$RUNNER_TEMP/fresh/bin/pip" install --quiet .
+      - run: "$RUNNER_TEMP/fresh/bin/mgtk-repo-utils" tools
 
   names:
     # The denylist names what must never appear in this repository, so the list

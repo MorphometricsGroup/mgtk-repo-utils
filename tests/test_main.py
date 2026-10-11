@@ -44,12 +44,7 @@ def test_tools_lists_every_installed_tool_with_its_table_and_distribution():
     assert tables["issues-view"] == "[issues]"
     assert tables["resolve"] == tables["clone"] == "[clone]"
     assert tables["check"] == "-"
-    assert {row[2] for row in rows if row[0] in TOOLS} == {
-        "mgtk-repo-utils-issues-view",
-        "mgtk-repo-utils-freeze-lint",
-        "mgtk-repo-utils-link-check",
-        "mgtk-repo-utils-clone",
-    }
+    assert {row[2] for row in rows} == {"mgtk-repo-utils"}
 
 
 def test_the_command_runs_from_any_directory_of_the_repository(tmp_path):

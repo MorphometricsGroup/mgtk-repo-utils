@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The constraints of design section 1 that a test can enforce, over the workspace."""
+"""The constraints of design section 1 that a test can enforce, over the one distribution."""
 
 import ast
 import tomllib
@@ -11,6 +11,8 @@ from support import PACKAGES, REPO
 
 SKIPPED = {".git", ".venv", ".pytest_cache", "__pycache__"}
 CORE = "mgtk_repo_utils"
+DISTRIBUTION = "mgtk-repo-utils"
+PYPROJECT = REPO / "pyproject.toml"
 TOOL_PACKAGES = {
     "issues-view": "mgtk_repo_utils_issues_view",
     "freeze-lint": "mgtk_repo_utils_freeze_lint",
@@ -20,13 +22,13 @@ TOOL_PACKAGES = {
 
 
 def sources():
-    """Every Python source of the distributions (not the tests)."""
+    """Every Python source of the distribution (not the tests)."""
     found = sorted((REPO / "src").rglob("*.py")) + sorted(PACKAGES.rglob("*.py"))
     return [p for p in found if not SKIPPED & set(p.relative_to(REPO).parts)]
 
 
-def pyprojects():
-    return [REPO / "pyproject.toml", *sorted(PACKAGES.glob("*/pyproject.toml"))]
+def project():
+    return tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
 
 
 def imported_roots(path):
@@ -53,24 +55,36 @@ def test_source_text_has_no_section_sign_and_no_url():
         assert "http://" not in text and "https://" not in text, path
 
 
-def test_every_distribution_ships_the_licence():
-    for path in pyprojects():
-        assert (path.parent / "LICENSE").is_file(), path.parent
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
-        assert data["project"]["license"].startswith("Apache-2.0"), path
+def test_the_distribution_ships_both_licences():
+    data = project()
+    assert data["project"]["license"].startswith("Apache-2.0")
+    for name in data["project"]["license-files"]:
+        assert (REPO / name).is_file(), name
+    assert "LICENSE-github-slugger" in data["project"]["license-files"]
 
 
-def test_every_distribution_carries_the_one_version():
-    versions = {}
-    for path in pyprojects():
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
-        versions[data["project"]["name"]] = data["project"]["version"]
-    assert set(versions.values()) == {__version__}, versions
-    assert set(versions) == {
-        "mgtk-repo-utils",
-        "mgtk-repo-utils-core",
-        *(f"mgtk-repo-utils-{name}" for name in TOOL_PACKAGES),
+def test_the_distribution_carries_the_one_version():
+    data = project()
+    assert data["project"]["name"] == DISTRIBUTION
+    assert data["project"]["version"] == __version__
+    assert not list(PACKAGES.glob("*/pyproject.toml")), "one distribution, not one per tool"
+
+
+def test_the_distribution_installs_from_its_metadata_alone():
+    """A pre-commit hook repository is installed with `pip install .` (design 1, revision 5.3)."""
+    data = project()
+    for requirement in data["project"]["dependencies"]:
+        assert not requirement.startswith(DISTRIBUTION), requirement
+    assert "sources" not in data.get("tool", {}).get("uv", {})
+    assert "workspace" not in data.get("tool", {}).get("uv", {})
+    shipped = data["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"]
+    assert {p.rsplit("/", 1)[-1] for p in shipped} == {
+        "mgtk_repo_utils_cli",
+        CORE,
+        *TOOL_PACKAGES.values(),
     }
+    for path in shipped:
+        assert (REPO / path / "__init__.py").is_file(), path
 
 
 def test_the_core_imports_no_tool_and_no_tool_imports_another():
