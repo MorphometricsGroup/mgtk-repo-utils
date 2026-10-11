@@ -1243,9 +1243,13 @@ the commit a second time.
   **Correction (2026-10-11, revision 5.3):** one distribution (section 1), so
   one version by construction; `pyproject.toml` and `__init__.py` are kept
   equal by release-please (below).
-- **Releases (revision 5.3).** Work follows GitHub Flow: a branch and a pull
-  request into `main`, which a ruleset protects (pull request required, the
-  CI checks required, no force push, no deletion, linear history). Commits
+- **Releases (revision 5.3).** Work follows GitHub Flow with semi-linear
+  merges: a feature branch and a draft pull request into `main`, as long-lived
+  as the work needs; before merging, the branch is rebased onto `main` and its
+  history tidied to the commits worth keeping, and the pull request is merged
+  with a merge commit. A ruleset on `main` enforces what GitHub can: a pull
+  request, the CI checks passed on a branch that is up to date with `main`,
+  merge commits as the only merge method, no force push, no deletion. Commits
   follow Conventional Commits; `feat!:` or a `BREAKING CHANGE:` footer marks a
   change consumers must act on, and a commit that changes generated output
   says so in its body. release-please keeps a release pull request up to date
