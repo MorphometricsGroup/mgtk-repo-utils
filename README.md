@@ -96,13 +96,16 @@ are the seams along which a tool could move to a repository of its own; until
 then they ship together, and the root `pyproject.toml` installs with pip from
 its metadata alone, which is what a pre-commit hook repository needs.
 
-Work follows GitHub Flow: a branch and a pull request into `main`, which
-requires the checks to pass. Commits follow Conventional Commits
-(`fix:`, `feat:`, `feat!:` for a change consumers must act on); release-please
-turns them into a release pull request that bumps the version in
-`pyproject.toml` and `__init__.py` and writes CHANGELOG.md, and merging it
-creates the tag `vX.Y.Z` and the GitHub release. Large consumer-facing changes
-get a page under `docs/migrations/`.
+Work follows GitHub Flow with semi-linear merges: a feature branch and a
+draft pull request into `main`; before merging, rebase the branch onto `main`
+and tidy its history to the commits worth keeping, then merge with a merge
+commit (the only merge method `main` accepts; the branch must be up to date
+and the checks green). Commits follow Conventional Commits (`fix:`, `feat:`,
+`feat!:` for a change consumers must act on); release-please turns them into
+a release pull request that bumps the version in `pyproject.toml` and
+`__init__.py` and writes CHANGELOG.md, and merging it creates the tag
+`vX.Y.Z` and the GitHub release. Large consumer-facing changes get a page
+under `docs/migrations/`.
 
 CI also scans every tracked file against a denylist of names that must never
 appear here. The list is the repository secret `MGTK_REPO_UTILS_DENYLIST` (one
