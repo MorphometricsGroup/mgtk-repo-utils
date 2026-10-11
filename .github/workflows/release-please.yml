@@ -1,0 +1,24 @@
+name: release-please
+
+# Releases follow the Conventional Commits merged into main (design section 12):
+# release-please keeps a release pull request up to date with the next version
+# (pyproject.toml, __init__.py, CHANGELOG.md); merging it creates the tag and the
+# GitHub release. A token of a person or an app lets CI run on that pull request
+# (GITHUB_TOKEN's own pull requests trigger no workflows).
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
