@@ -17,8 +17,29 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - uses: googleapis/release-please-action@v4
+      - id: release
+        uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      # The lock records the project's own version, so the release branch must
+      # refresh it after release-please bumps pyproject.toml; CI installs with
+      # --frozen and checks the lock on every other branch (ci.yml).
+      - uses: actions/checkout@v4
+        if: ${{ steps.release.outputs.pr }}
+        with:
+          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+      - uses: astral-sh/setup-uv@v5
+        if: ${{ steps.release.outputs.pr }}
+      - name: Refresh uv.lock on the release branch
+        if: ${{ steps.release.outputs.pr }}
+        run: |
+          uv lock
+          if ! git diff --quiet -- uv.lock; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore: refresh uv.lock for the release" -- uv.lock
+            git push
+          fi
