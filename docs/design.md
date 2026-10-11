@@ -1,8 +1,8 @@
 # mgtk-repo-utils — design
 
-Status: revision 6 (2026-10-11), current for mgtk-repo-utils from 0.1.1; the
+Status: revision 6.1 (2026-10-11), current for mgtk-repo-utils from 0.1.1; the
 routing, selection sets and read-only queries of sections 13 to 16 are
-designed for 0.2.0 and not yet implemented.
+designed for 0.2.0 and implemented on the branch that releases it.
 mgtk-repo-utils is the successor of **repo-kit**
 (`MorphometricsGroup/repo-kit`, releases 0.1.0 to 0.3.0, which shipped as a
 copy committed into each consumer); this document continues repo-kit's design
@@ -1488,7 +1488,7 @@ way, and the remedy it names is to reinstall the release.
 mgtk-repo-utils resolve <id>
 mgtk-repo-utils resolve --set <name>                       # revision 6; `--all` is `--set all`
 mgtk-repo-utils resolve --route <source> <key>=<value>...  # revision 6: an entry the registry does not hold
-mgtk-repo-utils resolve --root <name>                      # revision 6: a root, expanded
+mgtk-repo-utils resolve --destination-root <name>          # revision 6: a destination root, expanded
 mgtk-repo-utils resolve --check
 mgtk-repo-utils resolve ... --format json                  # revision 6: every form but --check
 ```
@@ -1498,8 +1498,8 @@ destination with the root expanded, and its URL. None of the three can hold a
 tab or a newline (section 15, checks 2, 3 and 6). The line is the one output
 not in the report format of section 3, because scripts read it; problems and
 errors go to standard error. The forms are exclusive: exactly one of `<id>`,
-`--set`, `--route`, `--root` and `--check`; none, two, more than one id, or an
-unknown or excluded id is a usage error (exit 2). An entry with a problem that
+`--set`, `--route`, `--destination-root` and `--check`; none, two, more than
+one id, or an unknown or excluded id is a usage error (exit 2). An entry with a problem that
 attaches to it (section 16, step 1) exits 1 and prints it.
 
 Expansion: `~` becomes the value of `HOME`, read from the environment and
@@ -1541,16 +1541,22 @@ caller is about to add this entry. Output is the same line as `resolve
 <id>`; a problem exits 1 on standard error. `--route` reads the registry to
 check against it and writes nothing.
 
-**`--root <name>`** (revision 6) prints the expanded path of a declared root,
-one line; an undeclared name is a usage error, and an unset or malformed
-variable is exit 2 as above.
+**`--destination-root <name>`** (revision 6) prints the expanded path of a
+declared destination root (`clone.roots`), one line without a trailing `/`;
+an undeclared name is a usage error, and an unset or malformed variable is
+exit 2 as above. **Correction (2026-10-11, revision 6.1, at
+implementation).** Revision 6 spelled this form `--root <name>`, which is
+the common option for the repository root (section 3): the two meanings
+would have shared one flag and been told apart only by the other arguments,
+which section 3 keeps apart on purpose. The form is spelled by the name
+section 3 gives these directories.
 
 **`--format json`** (revision 6) replaces the line output of `<id>`, `--set`
 and `--route` by one JSON array on standard output — one object per entry,
 in the same order, with the fields `id`, `destination`, `url`, `root` (the
 root's name), `source` (the source's name, or its position), `dir` and
 `deviation` (true when the destination is a declared deviation) — and that of
-`--root` by one object `{"root": <name>, "path": <path>}`. Problems and usage
+`--destination-root` by one object `{"root": <name>, "path": <path>}`. Problems and usage
 errors stay on standard error as text, with the same exit codes; nothing is
 printed on standard output when the exit code is not 0, so a consumer that
 parses the output never parses a partial array. `--check` and `clone` keep
@@ -1856,8 +1862,8 @@ For the clone tools (sections 13 to 17):
   one (check 8); `local=` given and checked (6, 7); a routed root chosen by
   the given field and by `defaults`; a source without `name`; a malformed
   `key=value`; the JSON object's fields.
-- `--root` and `--format json` (revision 6): the expanded root; an unset
-  variable (exit 2, nothing on standard output); the array for `<id>`, `--set`
+- `--destination-root` and `--format json` (revision 6): the expanded root;
+  an unset variable (exit 2, nothing on standard output); the array for `<id>`, `--set`
   and `--route` with the same order as the lines; no standard output on a
   non-zero exit.
 - Static check: one fixture per problem of section 15; excluded entries in
@@ -1995,8 +2001,8 @@ The distribution change (revision 5):
 Routing, sets and read-only queries (revision 6):
 
 13. Implement the keys of section 13 (`name`, the table form of `root`,
-    `defaults`, `sets`), `resolve --set`, `--route`, `--root` and `--format
-    json`, and `clone --set`, with the tests above, on one feature branch
+    `defaults`, `sets`), `resolve --set`, `--route`, `--destination-root`
+    and `--format json`, and `clone --set`, with the tests above, on one feature branch
     whose commits are `feat(clone):` and `feat(resolve):`; release-please
     releases 0.2.0. The consumer that asked switches its scripts to
     `resolve`/`clone` and retires its own; the one difference by design
@@ -2039,7 +2045,7 @@ Routing, sets and read-only queries (revision 6):
   belongs in `resolve` when such a consumer adopts the tools, so that the
   mapping keeps one home; it is not designed yet.
   **Designed (2026-10-11, revision 6):** `resolve --route <source>
-  <key>=<value>...` and `resolve --root <name>`, section 14.
+  <key>=<value>...` and `resolve --destination-root <name>`, section 14.
 - To confirm at implementation: that the variables dropped for git calls on a
   destination (section 17) match the set git itself clears before it runs a
   command in a submodule.
@@ -2060,8 +2066,9 @@ Routing, sets and read-only queries (revision 6):
   (corrected before release; `all` is now a name `--all` abbreviates; an
   empty condition admits every entry). Section 14: `--set`, `--route` (an
   entry the registry does not hold, checked against the registry as the
-  caller is about to add it), `--root`, `--format json` (one array, nothing
-  on standard output when the exit code is not 0). Section 15: check 10 and
+  caller is about to add it), `--destination-root` (spelled `--root` until
+  revision 6.1 corrected the collision with the common option), `--format
+  json` (one array, nothing on standard output when the exit code is not 0). Section 15: check 10 and
   the configuration-side validation. Section 16: `clone --set` continues
   past a failing entry and exits with the highest code. Tests, section 12
   (`requires = "0.2"`), the archetype table, rollout step 13 and the open

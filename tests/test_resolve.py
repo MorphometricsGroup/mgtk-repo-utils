@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from support import COMMAND, Repo, pinned
+from support import COMMAND, Repo, pinned, toml_value
 
 ROOTS = '{ work = "~/src", ops = "$OPS_ROOT" }'
 URLS = ["git@example.com:example/*", "git@example.com:example-org/*"]
@@ -35,7 +35,7 @@ def source(**keys: object) -> str:
         "local": "local",
         "exclude": ["notes"],
     } | keys
-    return "[[clone.sources]]\n" + "".join(f"{k} = {json.dumps(v)}\n" for k, v in values.items())
+    return "[[clone.sources]]\n" + "".join(f"{k} = {toml_value(v)}\n" for k, v in values.items())
 
 
 def make_repo(tmp_path, registry: str = REGISTRY, config: str | None = None) -> Repo:
@@ -417,3 +417,324 @@ def test_other_tools_run_without_pyyaml_even_with_a_clone_table(tmp_path):
     code, out, err = run_without_yaml(repo, "link-check")
     assert (code, err) == (0, "")
     assert out.startswith("link-check: ok")
+
+
+# routed roots, sets, --route, --destination-root and --format json (design section 14, revision 6)
+
+BY_CLASS = {"by": "class", "map": {"project": "work", "template": "ops"}}
+SETS = {
+    "all": {},
+    "active": {"status": ["active"]},
+    "projects": {"status": ["active"], "class": ["project"]},
+}
+ROUTED_REGISTRY = (
+    "repos:\n"
+    "  - {repo: example/alpha, status: active}\n"
+    "  - {repo: example/beta, status: archived, class: template}\n"
+    "  - {repo: example/gamma, status: active, class: template}\n"
+    "  - {repo: example/notes, status: active}\n"
+)
+
+
+def routed_repo(tmp_path, registry=ROUTED_REGISTRY, *extra: str, **keys):
+    spec = source(
+        name="projects", root=BY_CLASS, defaults={"class": "project"}, sets=SETS, **keys
+    )
+    return make_repo(tmp_path, registry, config_text(spec, *extra))
+
+
+def lines(out: str) -> list[list[str]]:
+    return [line.split("\t") for line in out.splitlines()]
+
+
+def test_set_prints_one_line_per_entry_in_source_then_entry_order(tmp_path):
+    code, out, err = run_in(routed_repo(tmp_path), ENV, "resolve", "--set", "active")
+    assert (code, err) == (0, "")
+    assert lines(out) == [
+        ["alpha", "/home/user/src/alpha", "git@example.com:example/alpha.git"],
+        ["gamma", "/data/ops/gamma", "git@example.com:example/gamma.git"],
+    ]
+
+
+def test_all_is_the_set_named_all(tmp_path):
+    repo = routed_repo(tmp_path)
+    assert run_in(repo, ENV, "resolve", "--all") == run_in(repo, ENV, "resolve", "--set", "all")
+    assert [row[0] for row in lines(run_in(repo, ENV, "resolve", "--all")[1])] == [
+        "alpha",
+        "beta",
+        "gamma",
+    ]
+
+
+def test_excluded_entries_are_absent_from_a_set(tmp_path):
+    out = run_in(routed_repo(tmp_path), ENV, "resolve", "--all")[1]
+    assert "notes" not in out
+
+
+def test_a_set_declared_by_two_sources_lists_the_first_sources_entries_first(tmp_path):
+    extra = source(
+        name="more", file="other.yaml", entries="more[]", sets={"all": {}}, exclude=[]
+    )
+    repo = routed_repo(tmp_path, ROUTED_REGISTRY, extra)
+    repo.write("other.yaml", "more:\n  - repo: example/delta\n")
+    code, out, _ = run_in(repo, ENV, "resolve", "--all")
+    assert code == 0
+    assert [row[0] for row in lines(out)] == ["alpha", "beta", "gamma", "delta"]
+
+
+def test_an_undeclared_set_is_a_usage_error_naming_the_declared_sets(tmp_path):
+    code, out, err = run_in(routed_repo(tmp_path), ENV, "resolve", "--set", "nothing")
+    assert (code, out) == (2, "")
+    assert "no source declares the set `nothing`" in err
+    assert "`all`, `active`, `projects`" in err
+
+
+def test_all_without_a_set_named_all_is_an_undeclared_set(tmp_path):
+    repo = make_repo(tmp_path, config=config_text(source(sets={"active": {}})))
+    code, out, err = run_in(repo, ENV, "resolve", "--all")
+    assert (code, out) == (2, "")
+    assert "no source declares the set `all`" in err and "`active`" in err
+
+
+def test_a_config_with_no_sets_names_none(tmp_path):
+    code, _, err = run_in(make_repo(tmp_path), ENV, "resolve", "--all")
+    assert code == 2 and "declared sets are none" in err
+
+
+def test_a_set_prints_the_other_entries_when_one_has_a_problem_and_exits_one(tmp_path):
+    registry = ROUTED_REGISTRY + "  - {repo: example/delta, status: active, class: other}\n"
+    code, out, err = run_in(routed_repo(tmp_path, registry), ENV, "resolve", "--set", "active")
+    assert code == 1
+    assert [row[0] for row in lines(out)] == ["alpha", "gamma"]
+    assert "(delta)" in err and "`root.map` does not list" in err
+
+
+def test_a_routed_entry_with_a_problem_exits_one_for_its_id(tmp_path):
+    registry = "repos:\n  - {repo: example/delta, class: other}\n"
+    code, out, err = run_in(routed_repo(tmp_path, registry), ENV, "resolve", "delta")
+    assert (code, out) == (1, "")
+    assert "`root.map` does not list" in err
+
+
+def test_set_and_id_together_are_a_usage_error(tmp_path):
+    repo = routed_repo(tmp_path)
+    for args in (("alpha", "--set", "all"), ("--set", "all", "--all"), ("--all", "--check")):
+        code, out, err = run_in(repo, ENV, "resolve", *args)
+        assert (code, out) == (2, "")
+        assert "usage: mgtk-repo-utils resolve" in err
+
+
+# --route
+
+
+def route(repo, *args, env=ENV):
+    return run_in(repo, env, "resolve", "--route", "projects", *args)
+
+
+def test_route_prints_the_line_of_an_entry_the_registry_does_not_hold(tmp_path):
+    code, out, err = route(routed_repo(tmp_path), "repo=example/new", "class=template")
+    assert (code, err) == (0, "")
+    assert out == "new\t/data/ops/new\tgit@example.com:example/new.git\n"
+
+
+def test_route_chooses_the_root_by_defaults_when_the_field_is_not_given(tmp_path):
+    out = route(routed_repo(tmp_path), "repo=example/new")[1]
+    assert out == "new\t/home/user/src/new\tgit@example.com:example/new.git\n"
+
+
+def test_route_reports_an_id_the_registry_holds_and_prints_nothing(tmp_path):
+    code, out, err = route(routed_repo(tmp_path), "repo=example/alpha")
+    assert (code, out) == (1, "")
+    assert "also an id or alias of registry.yaml: repos[0]" in err
+
+
+def test_route_reports_a_destination_inside_an_existing_one(tmp_path):
+    repo = routed_repo(tmp_path, local="local")
+    repo.write("registry.yaml", "repos:\n  - {repo: example/alpha, local: ~/src/deep}\n")
+    code, out, err = route(repo, "repo=example/new", "local=~/src/deep/inner")
+    assert (code, out) == (1, "")
+    assert "equals, contains or lies inside" in err
+
+
+def test_route_checks_a_given_local(tmp_path):
+    repo = routed_repo(tmp_path, local="local")
+    outside = route(repo, "repo=example/new", "local=/elsewhere/new")
+    default = route(repo, "repo=example/new", "local=~/src/new")
+    declared = route(repo, "repo=example/new", "local=~/src/odd")
+    assert outside[0] == default[0] == 1 and outside[1] == default[1] == ""
+    assert "outside every root" in outside[2] and "equals the default destination" in default[2]
+    assert declared[:2] == (0, "new\t/home/user/src/odd\tgit@example.com:example/new.git\n")
+
+
+def test_route_reports_a_value_the_map_does_not_list(tmp_path):
+    code, out, err = route(routed_repo(tmp_path), "repo=example/new", "class=other")
+    assert (code, out) == (1, "")
+    assert "`class` is `other`" in err
+
+
+def test_route_into_a_source_without_a_name_is_a_usage_error_naming_the_known_names(tmp_path):
+    repo = make_repo(tmp_path)
+    code, out, err = run_in(repo, ENV, "resolve", "--route", "clone.sources[0]", "repo=x/y")
+    assert (code, out) == (2, "")
+    assert "the named sources are none" in err
+
+
+def test_route_into_an_unknown_source_names_the_known_names(tmp_path):
+    code, out, err = run_in(
+        routed_repo(tmp_path), ENV, "resolve", "--route", "other", "repo=example/new"
+    )
+    assert (code, out) == (2, "")
+    assert "no source is named `other`" in err and "`projects`" in err
+
+
+@pytest.mark.parametrize("field", ["repo", "=x"])
+def test_route_with_a_field_that_is_not_key_equals_value_is_a_usage_error(tmp_path, field):
+    code, out, err = route(routed_repo(tmp_path), "repo=example/new", field)
+    assert (code, out) == (2, "")
+    assert "<key>=<value>" in err
+
+
+def test_route_with_only_a_source_builds_an_entry_with_no_fields_and_reports_it(tmp_path):
+    code, out, err = route(routed_repo(tmp_path))
+    assert (code, out) == (1, "")
+    assert "`repo` must be a non-empty string" in err
+
+
+def test_route_writes_nothing(tmp_path):
+    repo = routed_repo(tmp_path)
+    before = sorted(p.name for p in tmp_path.rglob("*"))
+    assert route(repo, "repo=example/new")[0] == 0
+    assert sorted(p.name for p in tmp_path.rglob("*")) == before
+
+
+# --destination-root
+
+
+def test_root_prints_the_expanded_root_without_a_trailing_slash(tmp_path):
+    repo = make_repo(tmp_path)
+    assert run_in(repo, ENV, "resolve", "--destination-root", "ops") == (0, "/data/ops\n", "")
+    assert run_in(repo, ENV, "resolve", "--destination-root", "work") == (0, "/home/user/src\n", "")
+
+
+def test_root_expands_only_the_named_root(tmp_path):
+    code, out, _ = run_in(make_repo(tmp_path), {"HOME": "/home/user"}, "resolve", "--destination-root", "work")
+    assert (code, out) == (0, "/home/user/src\n")
+
+
+def test_root_with_an_unset_variable_exits_two_with_nothing_on_standard_output(tmp_path):
+    code, out, err = run_in(make_repo(tmp_path), {"HOME": "/home/user"}, "resolve", "--destination-root", "ops")
+    assert (code, out) == (2, "")
+    assert "`OPS_ROOT`" in err and "root `ops`" in err
+
+
+def test_root_with_an_unknown_name_is_a_usage_error_naming_the_declared_roots(tmp_path):
+    code, out, err = run_in(make_repo(tmp_path), ENV, "resolve", "--destination-root", "nothing")
+    assert (code, out) == (2, "")
+    assert "no root is named `nothing`" in err and "`work`, `ops`" in err
+
+
+def test_the_common_root_option_is_still_the_repository_root(tmp_path):
+    repo = make_repo(tmp_path)
+    code, out, _ = run_in(repo, ENV, "resolve", "alpha", "--root", str(repo.root))
+    assert code == 0 and out.startswith("alpha\t")
+
+
+# --format json
+
+
+def objects(out: str) -> list[dict]:
+    return json.loads(out)
+
+
+def test_json_for_an_id_is_an_array_of_one_object_with_the_documented_fields(tmp_path):
+    code, out, err = run_in(routed_repo(tmp_path), ENV, "resolve", "gamma", "--format", "json")
+    assert (code, err) == (0, "")
+    assert objects(out) == [
+        {
+            "id": "gamma",
+            "destination": "/data/ops/gamma",
+            "url": "git@example.com:example/gamma.git",
+            "root": "ops",
+            "source": "projects",
+            "dir": "gamma",
+            "deviation": False,
+        }
+    ]
+
+
+def test_json_names_an_unnamed_source_by_its_position_and_marks_a_deviation(tmp_path):
+    code, out, _ = run_in(make_repo(tmp_path), ENV, "resolve", "gamma", "--format", "json")
+    assert code == 0
+    (obj,) = objects(out)
+    assert (obj["source"], obj["deviation"], obj["root"]) == ("clone.sources[0]", True, "work")
+    assert obj["destination"] == "/home/user/src/odd name"
+
+
+def test_json_for_a_set_lists_the_entries_in_the_order_of_the_text_lines(tmp_path):
+    repo = routed_repo(tmp_path)
+    text = run_in(repo, ENV, "resolve", "--all")[1]
+    code, out, _ = run_in(repo, ENV, "resolve", "--all", "--format", "json")
+    assert code == 0
+    assert [(o["id"], o["destination"], o["url"]) for o in objects(out)] == [
+        tuple(row) for row in lines(text)
+    ]
+
+
+def test_json_for_route_is_an_array_of_one_object(tmp_path):
+    code, out, _ = route(routed_repo(tmp_path), "repo=example/new", "class=template", "--format", "json")
+    assert code == 0
+    (obj,) = objects(out)
+    assert (obj["id"], obj["root"], obj["destination"], obj["source"]) == (
+        "new",
+        "ops",
+        "/data/ops/new",
+        "projects",
+    )
+
+
+def test_json_for_root_is_one_object(tmp_path):
+    code, out, _ = run_in(make_repo(tmp_path), ENV, "resolve", "--destination-root", "ops", "--format", "json")
+    assert code == 0
+    assert json.loads(out) == {"root": "ops", "path": "/data/ops"}
+
+
+def test_json_prints_nothing_on_standard_output_when_an_entry_has_a_problem(tmp_path):
+    registry = ROUTED_REGISTRY + "  - {repo: example/delta, class: other}\n"
+    repo = routed_repo(tmp_path, registry)
+    code, out, err = run_in(repo, ENV, "resolve", "--set", "all", "--format", "json")
+    assert (code, out) == (1, "")
+    assert "(delta)" in err
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("nothing",),
+        ("--set", "nothing"),
+        ("--route", "projects", "repo"),
+        ("--destination-root", "nothing"),
+        ("--route", "projects", "repo=example/alpha"),
+    ],
+)
+def test_json_prints_nothing_on_standard_output_on_any_non_zero_exit(tmp_path, args):
+    code, out, err = run_in(routed_repo(tmp_path), ENV, "resolve", *args, "--format", "json")
+    assert code != 0 and out == ""
+    assert err != ""
+
+
+def test_json_with_an_unset_variable_exits_two_with_nothing_on_standard_output(tmp_path):
+    code, out, _ = run_in(
+        routed_repo(tmp_path), {"HOME": "/home/user"}, "resolve", "--set", "all", "--format", "json"
+    )
+    assert (code, out) == (2, "")
+
+
+def test_json_does_not_apply_to_check(tmp_path):
+    code, out, err = run_in(make_repo(tmp_path), ENV, "resolve", "--check", "--format", "json")
+    assert (code, out) == (2, "")
+    assert "--format" in err
+
+
+def test_the_default_format_is_text(tmp_path):
+    repo = make_repo(tmp_path)
+    assert run_in(repo, ENV, "resolve", "alpha") == run_in(repo, ENV, "resolve", "alpha", "--format", "text")

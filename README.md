@@ -7,9 +7,11 @@ Repository-maintenance tools that several repositories need in the same form:
 - **freeze-lint** — tracked files under a path, checked against an allowlist
 - **link-check** — relative Markdown links and heading anchors
 - **resolve** and **clone** — read the repository's registries of other
-  repositories, map each entry to the place the registry declares for its
-  clone (`resolve`, which writes nothing), check those declarations
-  (`resolve --check`), and place the clone there (`clone`)
+  repositories, map each entry, a named set of entries, or an entry the
+  registry does not hold yet to the place the registry declares for its
+  clone (`resolve`, which writes nothing; `--format json` for scripts),
+  check those declarations (`resolve --check`), and place the clones there
+  (`clone`, one entry or a set)
 - **check** — every configured tool above (in check mode), then **pin**
 
 A consumer configures the tools with one file, `mgtk-repo-utils.toml`, at its
