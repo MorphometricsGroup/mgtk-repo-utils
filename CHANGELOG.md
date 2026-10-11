@@ -8,6 +8,21 @@ a breaking change (`!`), and only a large one gets a page under
 0.1.0 to 0.3.0); its history stays there, and moving a consumer from it is
 [docs/migrations/from-repo-kit.md](docs/migrations/from-repo-kit.md).
 
+## [0.1.1](https://github.com/MorphometricsGroup/mgtk-repo-utils/compare/v0.1.0...v0.1.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **ci:** the denylist scan skips comment lines ([1209a02](https://github.com/MorphometricsGroup/mgtk-repo-utils/commit/1209a027b0a4b410c795fb9514d1df0de259b943))
+* ship one distribution so pre-commit can install the hook repository ([eb9d65d](https://github.com/MorphometricsGroup/mgtk-repo-utils/commit/eb9d65d8937ff9a2fe14c6077c9f996502ede65f))
+
+
+### Documentation
+
+* **design:** revision 5.2 — public repository, https URLs ([f87dc24](https://github.com/MorphometricsGroup/mgtk-repo-utils/commit/f87dc2499bd6cf90c8467ac20a5e7ab46df7106c))
+* name the copyright holders in the README ([2cb5698](https://github.com/MorphometricsGroup/mgtk-repo-utils/commit/2cb5698319fa845dee4a62a3cf98172f69eb04e4))
+* one-line licence notice ([a00f055](https://github.com/MorphometricsGroup/mgtk-repo-utils/commit/a00f05577763619d929aabe6b1ecc90fc0ab1fc3))
+
 ## 0.1.0 (2026-10-11)
 
 The first release: the tools of repo-kit 0.3.0 as one tool installed from this
