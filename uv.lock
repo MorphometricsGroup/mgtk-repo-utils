@@ -2,16 +2,6 @@ version = 1
 revision = 5
 requires-python = ">=3.11"
 
-[manifest]
-members = [
-    "mgtk-repo-utils",
-    "mgtk-repo-utils-clone",
-    "mgtk-repo-utils-core",
-    "mgtk-repo-utils-freeze-lint",
-    "mgtk-repo-utils-issues-view",
-    "mgtk-repo-utils-link-check",
-]
-
 [[package]]
 name = "colorama"
 version = "0.4.6"
@@ -35,11 +25,6 @@ name = "mgtk-repo-utils"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "mgtk-repo-utils-clone" },
-    { name = "mgtk-repo-utils-core" },
-    { name = "mgtk-repo-utils-freeze-lint" },
-    { name = "mgtk-repo-utils-issues-view" },
-    { name = "mgtk-repo-utils-link-check" },
     { name = "pyyaml" },
 ]
 
@@ -49,70 +34,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "mgtk-repo-utils-clone", editable = "packages/clone" },
-    { name = "mgtk-repo-utils-core", editable = "packages/core" },
-    { name = "mgtk-repo-utils-freeze-lint", editable = "packages/freeze-lint" },
-    { name = "mgtk-repo-utils-issues-view", editable = "packages/issues-view" },
-    { name = "mgtk-repo-utils-link-check", editable = "packages/link-check" },
-    { name = "pyyaml", specifier = ">=6" },
-]
+requires-dist = [{ name = "pyyaml", specifier = ">=6" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest" }]
-
-[[package]]
-name = "mgtk-repo-utils-clone"
-version = "0.1.0"
-source = { editable = "packages/clone" }
-dependencies = [
-    { name = "mgtk-repo-utils-core" },
-    { name = "pyyaml" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "mgtk-repo-utils-core", editable = "packages/core" },
-    { name = "pyyaml", specifier = ">=6" },
-]
-
-[[package]]
-name = "mgtk-repo-utils-core"
-version = "0.1.0"
-source = { editable = "packages/core" }
-
-[[package]]
-name = "mgtk-repo-utils-freeze-lint"
-version = "0.1.0"
-source = { editable = "packages/freeze-lint" }
-dependencies = [
-    { name = "mgtk-repo-utils-core" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "mgtk-repo-utils-core", editable = "packages/core" }]
-
-[[package]]
-name = "mgtk-repo-utils-issues-view"
-version = "0.1.0"
-source = { editable = "packages/issues-view" }
-dependencies = [
-    { name = "mgtk-repo-utils-core" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "mgtk-repo-utils-core", editable = "packages/core" }]
-
-[[package]]
-name = "mgtk-repo-utils-link-check"
-version = "0.1.0"
-source = { editable = "packages/link-check" }
-dependencies = [
-    { name = "mgtk-repo-utils-core" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "mgtk-repo-utils-core", editable = "packages/core" }]
 
 [[package]]
 name = "packaging"
