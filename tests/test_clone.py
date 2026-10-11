@@ -16,7 +16,7 @@ import pytest
 from mgtk_repo_utils.config import load as load_config
 from mgtk_repo_utils_clone import clone as clone_module
 from mgtk_repo_utils_clone.clone import mask, same_url
-from support import PACKAGES, REPO, Repo, git
+from support import PACKAGES, REPO, Repo, git, toml_value
 
 IDENTITY = (
     "-c",
@@ -95,7 +95,7 @@ class World:
         self.repo.write(
             "mgtk-repo-utils.toml",
             f'schema = 1\nlang = "en"\n[clone]\nroots = {self.roots}\nurls = {json.dumps(self.urls)}\n'
-            "[[clone.sources]]\n" + "".join(f"{k} = {json.dumps(v)}\n" for k, v in keys.items()),
+            "[[clone.sources]]\n" + "".join(f"{k} = {toml_value(v)}\n" for k, v in keys.items()),
         )
         self.repo.write("registry.yaml", json.dumps({"repos": list(entries)}))
 
@@ -900,4 +900,123 @@ def test_clone_without_pyyaml_exits_two_naming_the_remedy_with_clone(tmp_path):
     assert proc.returncode == 2 and proc.stdout == ""
     assert "PyYAML is required" in proc.stderr
     assert "--with pyyaml mgtk-repo-utils clone <id>" in proc.stderr
+    assert listing(world.src) == []
+
+
+# sets (design section 16, revision 6)
+
+
+def test_a_set_clones_each_entry_in_order_and_prints_each_report(tmp_path):
+    world = simple(tmp_path, "alpha", "beta")
+    world.configure(world.entry("alpha"), world.entry("beta"), source={"sets": {"all": {}}})
+    result = world.run("--all")
+    assert result.code == 0
+    assert result.out == (
+        f"clone: ok (cloned alpha to {world.src / 'alpha'})\n"
+        f"clone: ok (cloned beta to {world.src / 'beta'})\n"
+    )
+    assert (world.src / "alpha" / "README").exists() and (world.src / "beta" / "README").exists()
+
+
+def test_set_selects_the_entries_whose_condition_matches(tmp_path):
+    world = World(tmp_path)
+    world.src.mkdir()
+    for name in ("alpha", "beta"):
+        make_remote(tmp_path, name)
+    world.configure(
+        world.entry("alpha", group="one"),
+        world.entry("beta", group="two"),
+        source={"sets": {"first": {"group": ["one"]}}},
+    )
+    result = world.run("--set", "first")
+    assert result.code == 0
+    assert (world.src / "alpha").exists() and not (world.src / "beta").exists()
+
+
+def test_a_failing_entry_does_not_stop_the_next_and_the_exit_code_is_the_highest(tmp_path):
+    world = World(tmp_path)
+    world.src.mkdir()
+    make_remote(tmp_path, "beta")  # alpha has no remote, so its `git clone` fails
+    world.configure(world.entry("alpha"), world.entry("beta"), source={"sets": {"all": {}}})
+    result = world.run("--all")
+    assert result.code == 1
+    assert "clone: 1 problem(s)" in result.out
+    assert f"clone: ok (cloned beta to {world.src / 'beta'})" in result.out
+    assert (world.src / "beta" / "README").exists() and not (world.src / "alpha").exists()
+
+
+def test_an_entry_that_ends_with_an_error_counts_two_and_the_next_is_still_handled(tmp_path):
+    world = World(tmp_path)
+    world.src.mkdir()
+    make_remote(tmp_path, "alpha")
+    make_remote(tmp_path, "beta")
+    world.configure(
+        world.entry("alpha", local="$SRC/missing/alpha"),
+        world.entry("beta"),
+        source={"sets": {"all": {}}},
+    )
+    result = world.run("--all")
+    assert result.code == 2
+    assert "mgtk-repo-utils: clone: the parent of the declared destination" in result.err
+    assert (world.src / "beta" / "README").exists()
+
+
+def test_a_missing_root_is_reported_once_and_creates_nothing(tmp_path):
+    world = World(tmp_path)  # `$SRC` is not created
+    for name in ("alpha", "beta"):
+        make_remote(tmp_path, name)
+    world.configure(world.entry("alpha"), world.entry("beta"), source={"sets": {"all": {}}})
+    result = world.run("--all")
+    assert result.code == 2
+    assert result.err.count("mgtk-repo-utils: clone: ") == 1
+    assert result.err.count("is not an existing directory") == 1
+    assert result.out == "" and not world.src.exists()
+
+
+def test_a_missing_root_does_not_stop_entries_of_another_root(tmp_path):
+    world = World(tmp_path, roots='{ work = "$SRC", more = "$MORE" }')
+    world.src.mkdir()
+    more = tmp_path / "more"  # not created
+    for name in ("alpha", "beta", "gamma"):
+        make_remote(tmp_path, name)
+    world.configure(
+        world.entry("alpha", group="more"),
+        world.entry("beta", group="more"),
+        world.entry("gamma", group="work"),
+        source={
+            "root": {"by": "group", "map": {"more": "more", "work": "work"}},
+            "sets": {"all": {}},
+        },
+    )
+    result = world.run("--all", env={"MORE": str(more)})
+    assert result.code == 2
+    assert result.err.count("root `more` is not an existing directory") == 1
+    assert (world.src / "gamma" / "README").exists()
+
+
+def test_a_set_reports_a_present_checkout_as_present(tmp_path):
+    world = simple(tmp_path, "alpha", "beta")
+    world.configure(world.entry("alpha"), world.entry("beta"), source={"sets": {"all": {}}})
+    assert world.run("alpha").code == 0
+    result = world.run("--all")
+    assert result.code == 0
+    assert result.out.splitlines()[0] == f"clone: ok (alpha is present at {world.src / 'alpha'})"
+
+
+def test_an_undeclared_set_is_a_usage_error_and_all_needs_a_set_named_all(tmp_path):
+    world = simple(tmp_path, "alpha")
+    world.configure(world.entry("alpha"), source={"sets": {"first": {}}})
+    for args in (("--set", "nothing"), ("--all",)):
+        result = world.run(*args)
+        assert result.code == 2 and result.out == ""
+        assert "no source declares the set" in result.err and "`first`" in result.err
+    assert listing(world.src) == []
+
+
+@pytest.mark.parametrize("args", [("alpha", "--set", "all"), ("alpha", "--all"), ("--set", "all", "--all")])
+def test_an_id_a_set_and_all_are_exclusive(tmp_path, args):
+    world = simple(tmp_path, "alpha")
+    world.configure(world.entry("alpha"), source={"sets": {"all": {}}})
+    result = world.run(*args)
+    assert result.code == 2
     assert listing(world.src) == []

@@ -438,14 +438,112 @@ def test_a_source_root_must_be_declared(tmp_path):
     assert "which is not in `clone.roots`" in clone_fail(tmp_path, 'root = "ops"', 'root = "other"')
 
 
-def test_a_routed_root_table_names_this_copys_version(tmp_path):
-    message = clone_fail(tmp_path, 'root = "ops"', 'root = { by = "class", map = { a = "work" } }')
-    assert "as a table" in message and __version__ in message
+ROUTED = 'root = { by = "class", map = { project = "work", template = "ops" } }'
 
 
-@pytest.mark.parametrize("key", ['defaults = { class = "project" }', 'all = { status = ["active"] }'])
-def test_keys_designed_for_later_are_rejected_with_this_copys_version(tmp_path, key):
-    message = fail(tmp_path, CLONE + key + "\n")
+def clone_source(tmp_path: Path, extra: str, root: str = 'root = "ops"'):
+    text = CLONE.replace('root = "ops"', root, 1) + extra
+    return load_text(tmp_path, text).table("clone").sources[0]
+
+
+def test_a_routed_root_is_a_by_key_and_a_map_to_declared_roots(tmp_path):
+    root = clone_source(tmp_path, "", ROUTED).root
+    assert (root.by, root.map) == ("class", {"project": "work", "template": "ops"})
+
+
+def test_a_source_without_a_name_is_called_by_its_position(tmp_path):
+    source = clone_source(tmp_path, "")
+    assert (source.name, source.declared, source.display) == ("clone.sources[0]", "", "clone.sources[0]")
+
+
+def test_a_declared_name_is_what_reports_call_the_source(tmp_path):
+    source = clone_source(tmp_path, 'name = "services"\n')
+    assert (source.name, source.display) == ("clone.sources[0]", "services")
+
+
+@pytest.mark.parametrize("name", ["", "a b", "a.b", "é"])
+def test_a_source_name_must_match_the_key_pattern(tmp_path, name):
+    message = fail(tmp_path, CLONE + f'name = "{name}"\n')
+    assert "`clone.sources[0].name` must match" in message
+
+
+def test_two_sources_cannot_share_a_name(tmp_path):
+    block = CLONE.split("[[clone.sources]]\n", 1)[1]
+    text = CLONE + 'name = "a"\n[[clone.sources]]\n' + block + 'name = "a"\n'
+    message = fail(tmp_path, text)
+    assert "`clone.sources[1].name`" in message and "`clone.sources[0]` already uses" in message
+
+
+def test_sources_with_different_names_load(tmp_path):
+    block = CLONE.split("[[clone.sources]]\n", 1)[1]
+    text = CLONE + 'name = "a"\n[[clone.sources]]\n' + block + 'name = "b"\n'
+    assert [s.display for s in load_text(tmp_path, text).table("clone").sources] == ["a", "b"]
+
+
+@pytest.mark.parametrize("by", ["", "a b", "a.b"])
+def test_the_by_key_of_a_routed_root_must_match_the_key_pattern(tmp_path, by):
+    root = f'root = {{ by = "{by}", map = {{ a = "work" }} }}'
+    assert "`clone.sources[0].root.by` must name a key" in fail(tmp_path, CLONE.replace('root = "ops"', root, 1))
+
+
+def test_the_map_of_a_routed_root_must_not_be_empty(tmp_path):
+    message = fail(tmp_path, CLONE.replace('root = "ops"', 'root = { by = "class", map = {} }', 1))
+    assert "`clone.sources[0].root.map` must not be empty" in message
+
+
+def test_the_map_of_a_routed_root_names_declared_roots(tmp_path):
+    root = 'root = { by = "class", map = { a = "work", b = "other" } }'
+    message = fail(tmp_path, CLONE.replace('root = "ops"', root, 1))
+    assert "`clone.sources[0].root.map.b`" in message and "not in `clone.roots`" in message
+
+
+def test_the_map_of_a_routed_root_holds_strings(tmp_path):
+    root = 'root = { by = "class", map = { a = 1 } }'
+    assert "`clone.sources[0].root.map.a` must be a string" in fail(
+        tmp_path, CLONE.replace('root = "ops"', root, 1)
+    )
+
+
+@pytest.mark.parametrize("root", ['{ by = "class" }', '{ map = { a = "work" } }'])
+def test_a_routed_root_requires_by_and_map(tmp_path, root):
+    message = fail(tmp_path, CLONE.replace('root = "ops"', f"root = {root}", 1))
+    assert "is required" in message
+
+
+def test_a_routed_root_rejects_unknown_keys(tmp_path):
+    root = 'root = { by = "class", map = { a = "work" }, other = 1 }'
+    assert "unknown key `clone.sources[0].root.other`" in fail(tmp_path, CLONE.replace('root = "ops"', root, 1))
+
+
+def test_defaults_are_strings_by_key(tmp_path):
+    source = clone_source(tmp_path, 'defaults = { class = "project", status = "active" }\n')
+    assert source.defaults == {"class": "project", "status": "active"}
+    assert "`clone.sources[0].defaults.class` must be a string" in fail(
+        tmp_path, CLONE + "defaults = { class = 1 }\n"
+    )
+
+
+def test_sets_are_conditions_of_key_to_string_lists_and_an_empty_one_is_allowed(tmp_path):
+    source = clone_source(tmp_path, 'sets = { all = {}, live = { status = ["active", "new"], class = ["a"] } }\n')
+    assert source.sets == {"all": {}, "live": {"status": ("active", "new"), "class": ("a",)}}
+
+
+@pytest.mark.parametrize(
+    ("sets", "fragment"),
+    [
+        ('{ "a b" = {} }', "set name 'a b' in `clone.sources[0].sets`"),
+        ('{ a = { "x y" = ["v"] } }', "key 'x y' in the condition `clone.sources[0].sets.a`"),
+        ('{ a = { status = "active" } }', "`clone.sources[0].sets.a.status` must be an array of strings"),
+        ('{ a = { status = [1] } }', "`clone.sources[0].sets.a.status` must be an array of strings"),
+        ('{ a = ["active"] }', "`clone.sources[0].sets.a` must be a table"),
+    ],
+)
+def test_sets_are_validated(tmp_path, sets, fragment):
+    assert fragment in fail(tmp_path, CLONE + f"sets = {sets}\n")
+
+
+def test_a_key_designed_for_later_is_rejected_with_this_copys_version(tmp_path):
+    message = fail(tmp_path, CLONE + 'all = { status = ["active"] }\n')
     assert "unknown" in message and __version__ in message
 
 

@@ -81,6 +81,18 @@ MESSAGES: dict[str, tuple[str, str]] = {
         "`{key}` は空でない文字列でなければならないが，{kind}．空でない文字列にする"
         "（YAML が真偽値，数値，日付と読む値は引用符で囲む）",
     ),
+    "entry-route": (
+        "`{key}` selects the root of the entry through `root.map`, but it is {kind}; give it "
+        "a string that `map` lists, or set a default for it in `defaults`",
+        "`{key}` が `root.map` を通じてエントリの root を選ぶが，{kind}．`map` にある文字列を"
+        "与えるか，`defaults` に既定値を置く",
+    ),
+    "entry-route-unmapped": (
+        "`{key}` is `{value}`, which `root.map` does not list, so the entry has no root; add "
+        "the value to `map`, or correct the entry",
+        "`{key}` が `{value}` で `root.map` にないため，エントリの root が決まらない．"
+        "`map` にその値を加えるか，エントリを直す",
+    ),
     "entry-no-id": (
         "the id cannot be determined: the URL gives no basename; set `id` to the key that "
         "holds the id, or fix the URL",
@@ -307,8 +319,43 @@ MESSAGES: dict[str, tuple[str, str]] = {
         "{sources} 件のソースからエントリ {entries} 件，うち除外 {excluded} 件",
     ),
     "resolve-usage": (
-        "give exactly one of an id and --check",
-        "id と --check のどちらか一方だけを指定する",
+        "give exactly one of an id, --set, --all, --route, --destination-root and --check",
+        "id，--set，--all，--route，--destination-root，--check のうちちょうど 1 つを指定する",
+    ),
+    "resolve-format-check": (
+        "--format applies to resolving an entry, a set or a root, not to --check; drop one "
+        "of the two",
+        "--format はエントリ，セット，root の解決に対するもので --check には使えない．"
+        "どちらかを外す",
+    ),
+    "clone-usage": (
+        "give exactly one of an id, --set and --all",
+        "id，--set，--all のうちちょうど 1 つを指定する",
+    ),
+    "none-declared": ("none", "なし"),
+    "resolve-set-unknown": (
+        "no source declares the set `{name}`; the declared sets are {known}; use one of them, "
+        "or declare the set in `sets` of a source",
+        "セット `{name}` を宣言しているソースがない．宣言済みのセットは {known}．"
+        "そのどれかを使うか，ソースの `sets` に宣言する",
+    ),
+    "resolve-root-unknown": (
+        "no root is named `{name}`; the declared roots are {known}; use one of them, or "
+        "declare the root in `clone.roots`",
+        "`{name}` という名前の root がない．宣言済みの root は {known}．"
+        "そのどれかを使うか，`clone.roots` に宣言する",
+    ),
+    "route-source-unknown": (
+        "no source is named `{name}`; the named sources are {known}; give `name` to the "
+        "source in the configuration, or use one of these",
+        "`{name}` という名前のソースがない．名前のあるソースは {known}．"
+        "設定でソースに `name` を付けるか，これらのどれかを使う",
+    ),
+    "route-field": (
+        "`{field}` is not a field of the form `<key>=<value>`; write each field of the entry "
+        "after the source name as `key=value`",
+        "`{field}` は `<key>=<value>` の形のフィールドではない．ソース名の後ろにエントリの"
+        "フィールドを `key=value` と書く",
     ),
     "summary-clone-cloned": ("cloned {id} to {dest}", "{id} を {dest} にクローンした"),
     "summary-clone-present": ("{id} is present at {dest}", "{id} は {dest} にある"),
@@ -352,11 +399,27 @@ MESSAGES: dict[str, tuple[str, str]] = {
         "or declare it",
         "`{name}` の root {value} は `clone.roots` にない．宣言済みの root を使うか宣言する",
     ),
-    "cfg-clone-root-table": (
-        "`{name}` as a table (a root chosen by a field) is not supported by this release "
-        "(mgtk-repo-utils {version}); give one root name, or use a newer release",
-        "`{name}` をテーブル（フィールドによる root の振り分け）にする形はこのリリース"
-        "（mgtk-repo-utils {version}）では扱えない．root の名前を 1 つ書くか，新しいリリースを使う",
+    "cfg-clone-name": (
+        "`{name}` must match [A-Za-z0-9_-]+, got {value}; rename the source",
+        "`{name}` は [A-Za-z0-9_-]+ に一致する必要がある．{value} は不正なので名前を変える",
+    ),
+    "cfg-clone-name-duplicate": (
+        "`{name}` is {value}, which `{other}` already uses; give each source its own name",
+        "`{name}` は {value} だが，`{other}` がすでに使っている．ソースごとに別の名前を付ける",
+    ),
+    "cfg-clone-by": (
+        "`{name}` must name a key matching [A-Za-z0-9_-]+, got {value}; write the key whose "
+        "value selects the root",
+        "`{name}` は [A-Za-z0-9_-]+ に一致するキーの名前でなければならない．{value} は不正なので"
+        "root を選ぶ値を持つキーを書く",
+    ),
+    "cfg-clone-set-name": (
+        "set name {value} in `{name}` must match [A-Za-z0-9_-]+; rename it",
+        "`{name}` のセット名 {value} は [A-Za-z0-9_-]+ に一致する必要がある．名前を変える",
+    ),
+    "cfg-clone-set-key": (
+        "key {value} in the condition `{name}` must match [A-Za-z0-9_-]+; rename it",
+        "条件 `{name}` のキー {value} は [A-Za-z0-9_-]+ に一致する必要がある．名前を変える",
     ),
     "cfg-clone-template": (
         "`{name}` is not a valid template: {value}; write placeholders as `{{key}}` with "

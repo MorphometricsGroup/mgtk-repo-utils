@@ -7,6 +7,7 @@ import pytest
 from mgtk_repo_utils_clone import registry
 from mgtk_repo_utils.config import load as load_config
 from mgtk_repo_utils.report import ToolError
+from support import toml_value
 
 ROOTS = '{ work = "~/src", ops = "~/src/ops" }'
 URLS = ["git@example.com:example/*", "git@example.com:example-org/*", "/srv/**", "host:*"]
@@ -19,7 +20,7 @@ def source(**keys: object) -> str:
         "root": "work",
         "url": "git@example.com:{repo}.git",
     } | keys
-    return "[[clone.sources]]\n" + "".join(f"{k} = {json.dumps(v)}\n" for k, v in values.items())
+    return "[[clone.sources]]\n" + "".join(f"{k} = {toml_value(v)}\n" for k, v in values.items())
 
 
 def configure(tmp_path: Path, text: str | None, *sources: str, roots: str = ROOTS, lang: str = "en"):
@@ -723,3 +724,269 @@ def test_only_the_entrys_own_root_is_expanded(tmp_path):
 def test_a_root_of_a_single_slash_gives_a_destination_directly_under_it(tmp_path):
     res, entry = make_entry(tmp_path, slugs("example/a"))
     assert registry.expand_destination(entry, {"work": "$WORK"}, {"WORK": "/"}) == "/a"
+
+
+# routed roots, sets and --route (design sections 13 and 14, revision 6)
+
+TWO_ROOTS = '{ work = "~/src", templates = "~/tpl" }'
+BY_CLASS = {"by": "class", "map": {"project": "work", "template": "templates"}}
+
+
+def routed(**keys: object) -> str:
+    return source(root=BY_CLASS, **keys)
+
+
+def routed_resolved(tmp_path, text, **keys):
+    return resolved(tmp_path, text, routed(**keys), roots=TWO_ROOTS)
+
+
+def test_a_routed_root_takes_the_root_the_entrys_value_selects(tmp_path):
+    res = routed_resolved(tmp_path, "repos:\n  - {repo: example/a, class: template}\n")
+    assert rendered(res) == []
+    assert (res.entries[0].root, res.entries[0].destination) == ("templates", "~/tpl/a")
+
+
+@pytest.mark.parametrize("value", ["", "    class:\n"])
+def test_an_absent_or_null_routing_value_takes_the_default(tmp_path, value):
+    text = "repos:\n  - repo: example/a\n" + (value and "    class:\n")
+    res = routed_resolved(tmp_path, text, defaults={"class": "template"})
+    assert rendered(res) == []
+    assert (res.entries[0].root, res.entries[0].destination) == ("templates", "~/tpl/a")
+
+
+def test_a_present_value_beats_the_default(tmp_path):
+    text = "repos:\n  - {repo: example/a, class: project}\n"
+    res = routed_resolved(tmp_path, text, defaults={"class": "template"})
+    assert res.entries[0].root == "work"
+
+
+def test_an_absent_routing_value_without_a_default_is_check_10_and_leaves_no_destination(tmp_path):
+    res = routed_resolved(tmp_path, "repos:\n  - repo: example/a\n")
+    line = only(res, "`class`")
+    assert "registry.yaml: repos[0] (a)" in line and "absent" in line
+    entry = res.entries[0]
+    assert entry.destination is None
+    assert [p.render() for p in res.problems_for(entry)] == [line]
+
+
+def test_a_null_routing_value_without_a_default_is_check_10(tmp_path):
+    res = routed_resolved(tmp_path, "repos:\n  - {repo: example/a, class: null}\n")
+    assert "null" in only(res, "`class`")
+
+
+def test_a_routing_value_missing_from_the_map_is_check_10(tmp_path):
+    res = routed_resolved(tmp_path, "repos:\n  - {repo: example/a, class: other}\n")
+    assert "`class` is `other`, which `root.map` does not list" in only(res, "root.map")
+    assert res.entries[0].destination is None
+
+
+@pytest.mark.parametrize(
+    ("scalar", "kind"), [("3", "a number"), ("on", "a boolean"), ("[project]", "a list")]
+)
+def test_a_routing_value_that_is_not_a_string_is_check_10(tmp_path, scalar, kind):
+    res = routed_resolved(tmp_path, f"repos:\n  - {{repo: example/a, class: {scalar}}}\n")
+    assert f"`class` selects the root of the entry through `root.map`, but it is {kind}" in only(
+        res, "`class`"
+    )
+
+
+def test_a_default_never_fills_the_id_or_a_placeholder(tmp_path):
+    res = routed_resolved(
+        tmp_path,
+        "repos:\n  - {class: project}\n",
+        defaults={"repo": "example/zzz"},
+    )
+    assert "`repo` must be a non-empty string" in only(res, "`repo`")
+
+
+def test_an_excluded_entry_with_an_unroutable_value_has_no_problem(tmp_path):
+    res = routed_resolved(tmp_path, "repos:\n  - {repo: example/a, class: other}\n", exclude=["a"])
+    assert rendered(res) == []
+
+
+def test_a_source_is_named_by_its_declared_name_in_problems(tmp_path):
+    res = resolved(tmp_path, "repos: []\n", source(name="services"))
+    assert "mgtk-repo-utils.toml: services:" in only(res, "no entry")
+
+
+SET_REGISTRY = (
+    "repos:\n"
+    "  - {repo: example/a, status: active, class: project}\n"
+    "  - {repo: example/b, status: archived, class: project}\n"
+    "  - {repo: example/c, status: active, class: template}\n"
+    "  - {repo: example/d, status: active}\n"
+    "  - {repo: example/e, status: true, class: project}\n"
+)
+
+
+def members(res, name):
+    return [entry.id for entry in res.set_entries(name)]
+
+
+def test_an_empty_condition_admits_every_entry_of_the_source(tmp_path):
+    res = routed_resolved(tmp_path, SET_REGISTRY, defaults={"class": "project"}, sets={"all": {}})
+    assert members(res, "all") == ["a", "b", "c", "d", "e"]
+
+
+def test_a_condition_with_several_keys_needs_every_key_to_match_one_of_its_values(tmp_path):
+    sets = {"live": {"status": ["active", "archived"], "class": ["project"]}}
+    res = routed_resolved(tmp_path, SET_REGISTRY, sets=sets)
+    assert members(res, "live") == ["a", "b"]  # c is a template, d has no class, e's status is a boolean
+
+
+def test_a_default_counts_for_a_set_condition(tmp_path):
+    sets = {"projects": {"class": ["project"]}}
+    res = routed_resolved(tmp_path, SET_REGISTRY, sets=sets, defaults={"class": "project"})
+    assert members(res, "projects") == ["a", "b", "d", "e"]
+
+
+def test_a_value_that_is_not_a_string_matches_no_condition(tmp_path):
+    res = routed_resolved(
+        tmp_path, SET_REGISTRY, defaults={"class": "project"}, sets={"s": {"status": ["true", "on"]}}
+    )
+    assert members(res, "s") == []
+
+
+def test_excluded_entries_belong_to_no_set(tmp_path):
+    res = routed_resolved(
+        tmp_path, SET_REGISTRY, defaults={"class": "project"}, sets={"all": {}}, exclude=["b"]
+    )
+    assert members(res, "all") == ["a", "c", "d", "e"]
+
+
+def test_a_set_declared_by_two_sources_is_their_union_in_source_then_entry_order(tmp_path):
+    (tmp_path / "other.yaml").write_text("repos:\n  - repo: example/z\n  - repo: example/y\n")
+    res = resolved(
+        tmp_path,
+        "repos:\n  - repo: example/a\n  - repo: example/b\n",
+        source(sets={"all": {}}),
+        source(file="other.yaml", sets={"all": {}, "extra": {}}),
+        source(file="other.yaml", url="git@example.com:example-org/{repo}.git", name="third"),
+    )
+    assert members(res, "all") == ["a", "b", "z", "y"]
+    assert res.set_names == ("all", "extra")
+    assert members(res, "extra") == ["z", "y"]
+
+
+def test_a_set_no_source_declares_is_not_declared(tmp_path):
+    res = resolved(tmp_path, slugs("example/a"), source(sets={"all": {}}))
+    assert res.declares_set("all") and not res.declares_set("active")
+    assert members(res, "active") == []
+
+
+def test_a_source_without_sets_belongs_to_no_set(tmp_path):
+    res = resolved(tmp_path, slugs("example/a"))
+    assert res.set_names == () and res.entries[0].sets == frozenset()
+
+
+def test_an_entry_with_a_problem_stays_in_its_set_with_its_problems(tmp_path):
+    res = routed_resolved(
+        tmp_path,
+        "repos:\n  - {repo: example/a, class: project}\n  - {repo: example/b, class: other}\n",
+        sets={"all": {}},
+    )
+    bad = res.set_entries("all")[1]
+    assert bad.id == "b" and len(res.problems_for(bad)) == 1
+
+
+# route
+
+
+def routing(tmp_path, text=None, sources=None, roots=TWO_ROOTS):
+    sources = sources or [routed(name="projects", defaults={"class": "project"})]
+    config = configure(tmp_path, text if text is not None else slugs("example/a"), *sources, roots=roots)
+    return config, registry.load(config)
+
+
+def test_route_builds_the_entry_the_source_would_build(tmp_path):
+    config, res = routing(tmp_path)
+    entry, problems = registry.route(config, res, "projects", ["repo=example/b", "class=template"])
+    assert problems == []
+    assert (entry.id, entry.url, entry.root, entry.destination, entry.dir) == (
+        "b",
+        "git@example.com:example/b.git",
+        "templates",
+        "~/tpl/b",
+        "b",
+    )
+    assert len(res.entries) == 1  # the registry is not changed
+
+
+def test_route_chooses_the_root_by_the_given_field_and_otherwise_by_defaults(tmp_path):
+    config, res = routing(tmp_path)
+    given, _ = registry.route(config, res, "projects", ["repo=example/b", "class=template"])
+    default, _ = registry.route(config, res, "projects", ["repo=example/b"])
+    assert (given.root, default.root) == ("templates", "work")
+
+
+def test_route_reports_an_id_the_registry_already_declares(tmp_path):
+    config, res = routing(tmp_path)
+    _, problems = registry.route(config, res, "projects", ["repo=example-org/a"])
+    assert any("also an id or alias of registry.yaml: repos[0]" in p.render() for p in problems)
+
+
+def test_route_reports_a_destination_nested_in_an_existing_one(tmp_path):
+    text = "repos:\n  - {repo: example/a, local: ~/src/deep}\n"
+    config, res = routing(tmp_path, text, [routed(name="projects", defaults={"class": "project"}, local="local")])
+    _, problems = registry.route(config, res, "projects", ["repo=example/b", "local=~/src/deep/inner"])
+    assert len(problems) == 1
+    assert "~/src/deep/inner" in problems[0].render() and "registry.yaml: repos[0]" in problems[0].render()
+
+
+def test_route_checks_a_given_local_as_a_declared_deviation(tmp_path):
+    config, res = routing(tmp_path, sources=[routed(name="projects", defaults={"class": "project"}, local="local")])
+    outside = registry.route(config, res, "projects", ["repo=example/b", "local=/elsewhere/b"])[1]
+    same = registry.route(config, res, "projects", ["repo=example/b", "local=~/src/b"])[1]
+    ok, none = registry.route(config, res, "projects", ["repo=example/b", "local=~/src/odd"])
+    assert len(outside) == 1 and "outside every root" in outside[0].render()
+    assert len(same) == 1 and "equals the default destination" in same[0].render()
+    assert none == [] and (ok.deviation, ok.destination) == ("~/src/odd", "~/src/odd")
+
+
+def test_route_reports_an_unroutable_value(tmp_path):
+    config, res = routing(tmp_path)
+    _, problems = registry.route(config, res, "projects", ["repo=example/b", "class=other"])
+    assert len(problems) == 1 and "root.map" in problems[0].render()
+
+
+def test_route_does_not_report_the_registrys_own_problems(tmp_path):
+    text = "repos:\n  - {repo: example/a, class: other}\n"
+    config, res = routing(tmp_path, text)
+    assert res.problems
+    _, problems = registry.route(config, res, "projects", ["repo=example/b"])
+    assert problems == []
+
+
+def test_route_into_a_source_without_a_name_names_the_known_names(tmp_path):
+    config, res = routing(tmp_path, sources=[routed(), routed(name="projects")])
+    with pytest.raises(ToolError) as info:
+        registry.route(config, res, "clone.sources[0]", ["repo=example/b"])
+    assert "no source is named `clone.sources[0]`" in str(info.value) and "`projects`" in str(info.value)
+
+
+def test_route_with_no_named_source_says_none(tmp_path):
+    config, res = routing(tmp_path, sources=[routed()])
+    with pytest.raises(ToolError) as info:
+        registry.route(config, res, "projects", [])
+    assert "the named sources are none" in str(info.value)
+
+
+@pytest.mark.parametrize("field", ["repo", "=x", ""])
+def test_route_rejects_a_field_that_is_not_key_equals_value(tmp_path, field):
+    config, res = routing(tmp_path)
+    with pytest.raises(ToolError) as info:
+        registry.route(config, res, "projects", [field])
+    assert "<key>=<value>" in str(info.value)
+
+
+def test_route_splits_a_field_at_the_first_equals_sign(tmp_path):
+    config, res = routing(tmp_path, sources=[routed(name="projects", defaults={"class": "project"}, url="{repo}")])
+    entry, _ = registry.route(config, res, "projects", ["repo=/srv/a=b"])
+    assert entry.url == "/srv/a=b"
+
+
+def test_route_refuses_an_excluded_id(tmp_path):
+    config, res = routing(tmp_path, sources=[routed(name="projects", defaults={"class": "project"}, exclude=["b"])])
+    with pytest.raises(ToolError) as info:
+        registry.route(config, res, "projects", ["repo=example/b"])
+    assert "excluded" in str(info.value)
