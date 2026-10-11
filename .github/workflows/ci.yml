@@ -29,6 +29,17 @@ jobs:
         # node is needed only to regenerate the slug fixtures (scripts/dev), not here.
         run: uv run --frozen --python ${{ matrix.python-version }} pytest -q
 
+  check:
+    # The repository's own tracker and links, checked with the working tree
+    # rather than the pinned release, so a change to the generated output is
+    # caught in the pull request that makes it (README, Issue tracking).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - run: uv run --frozen mgtk-repo-utils check
+
   pip-install:
     # A pre-commit hook repository is installed with `pip install .` from its
     # standard metadata alone (design section 1, revision 5.3); this is the

@@ -1281,13 +1281,13 @@ the commit a second time.
   would stop on an unknown table. From mgtk-repo-utils 0.1.0 `requires` is also what stands
   between a machine's installation and a consumer's configuration (section 2),
   so a consumer sets it whenever its configuration needs a release newer than
-  the ones its machines are known to hold. The keys of section 13 marked as later arrive in the
-  release that implements them; until then a release rejects them with a message
-  that names its version — `defaults` and `all` as unknown keys, and a
-  table-valued `root` with a message of its own, since `root` is a known key
-  whose table form is not yet allowed. **Revision 6:** `name`, the table form
-  of `root`, `defaults` and `sets` arrive in 0.2.0, within schema 1; a file
-  that uses them sets `requires = "0.2"`. The key `all` was never released.
+  the ones its machines are known to hold. `name`, the table form
+  of `root`, `defaults` and `sets` (section 13) arrive in 0.2.0 (revision 6),
+  within schema 1; a file that uses them sets `requires = "0.2"`. A release
+  before 0.2.0 rejects them with a message that names its version — `defaults`
+  and `sets` as unknown keys, and a table-valued `root` with a message of its
+  own, since `root` is a known key whose table form it does not allow — which
+  is what `requires` spares the reader of the message. The key `all` was never released.
 - A release that changes generated output (view layout, wording) is marked in
   CHANGELOG; consumers regenerate in the same commit that moves the pin.
   **Revision 5.3:** the mark is the commit's body, which release-please
@@ -1748,10 +1748,9 @@ Git's own output passes through. The tool reports in the format of section 3:
 Every path and URL in a command the tool prints is quoted for a POSIX shell,
 and a password or token in a URL's user part is masked in every report.
 
-`--all` (later) takes the bulk set in the order of the sources and their
-entries, checks every root first, handles each entry as above, continues after
-a failure and exits with the highest code; a present checkout is not a
-failure.
+`--set <name>` and `--all` (revision 6; above) handle each entry of the set
+as above in the order of the sources and their entries, continue after a
+failure and exit with the highest code; a present checkout is not a failure.
 
 ### 17. Authority and invariants
 
