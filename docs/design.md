@@ -1254,7 +1254,13 @@ the commit a second time.
   merge commits as the only merge method, no force push, no deletion. Commits
   follow Conventional Commits; `feat!:` or a `BREAKING CHANGE:` footer marks a
   change consumers must act on, and a commit that changes generated output
-  says so in its body. release-please keeps a release pull request up to date
+  says so in its body. The pull request's title is a plain sentence and not
+  a Conventional Commit: GitHub writes the title into the merge commit's
+  message and release-please parses it like any commit, so a `feat:` title
+  enters the CHANGELOG a second time beside the commits it merges, and the
+  merge commit on `main` cannot be amended (found at the first feature
+  release, 0.2.0, whose entry keeps the line). release-please keeps a
+  release pull request up to date
   from the commits merged since the last tag — the next version in
   `pyproject.toml` and `__init__.py` (an `x-release-please-version`
   annotation) and the CHANGELOG entry — and merging it creates the tag and

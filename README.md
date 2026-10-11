@@ -106,8 +106,12 @@ and the checks green). Commits follow Conventional Commits (`fix:`, `feat:`,
 `feat!:` for a change consumers must act on); release-please turns them into
 a release pull request that bumps the version in `pyproject.toml` and
 `__init__.py` and writes CHANGELOG.md, and merging it creates the tag
-`vX.Y.Z` and the GitHub release. Large consumer-facing changes get a page
-under `docs/migrations/`.
+`vX.Y.Z` and the GitHub release. The pull request's title is a plain
+sentence, not a Conventional Commit: GitHub writes the title into the merge
+commit's message, release-please parses it like any commit, and a `feat:`
+title would enter the CHANGELOG a second time beside the commits it merges;
+the merge commit cannot be amended afterwards. Large consumer-facing changes
+get a page under `docs/migrations/`.
 
 CI also scans every tracked file against a denylist of names that must never
 appear here. The list is the repository secret `MGTK_REPO_UTILS_DENYLIST` (one
