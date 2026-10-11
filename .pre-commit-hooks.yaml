@@ -1,0 +1,27 @@
+# The hook repository (design section 2). A consumer names this repository with a
+# `rev` that is a full commit and lists the hooks it wants; `language: python`
+# installs the root distribution, which depends on every tool at the same commit.
+- id: mgtk-repo-utils-issues-view
+  name: mgtk-repo-utils issues-view
+  entry: mgtk-repo-utils issues-view
+  language: python
+  pass_filenames: false
+  always_run: true
+- id: mgtk-repo-utils-freeze-lint
+  name: mgtk-repo-utils freeze-lint
+  entry: mgtk-repo-utils freeze-lint
+  language: python
+  pass_filenames: false
+  always_run: true
+- id: mgtk-repo-utils-link-check
+  name: mgtk-repo-utils link-check
+  entry: mgtk-repo-utils link-check
+  language: python
+  pass_filenames: false
+  always_run: true
+- id: mgtk-repo-utils-check
+  name: mgtk-repo-utils check
+  entry: mgtk-repo-utils check
+  language: python
+  pass_filenames: false
+  always_run: true

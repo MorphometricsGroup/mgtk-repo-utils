@@ -1,0 +1,4 @@
+fixtures.json is the test vector file of github-slugger 2.0.0 (test/fixtures.json),
+copied unchanged from upstream commit 3461c4350868329c8530904d170358bca1d31448.
+github-slugger is licensed under the ISC licence; LICENSE in this directory is its
+licence text. These files are test data only and are not part of any distribution.

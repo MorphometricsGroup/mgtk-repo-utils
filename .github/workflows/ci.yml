@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install the workspace
+        run: uv sync --locked --python ${{ matrix.python-version }}
+      - name: Run the test suite
+        # node is needed only to regenerate the slug fixtures (scripts/dev), not here.
+        run: uv run --python ${{ matrix.python-version }} pytest -q
+
+  names:
+    # The denylist names what must never appear in this repository, so the list
+    # itself is a secret of the repository, never a tracked file (design section 1).
+    # A pull request from a fork has no secrets; the scan runs when it merges.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan every tracked file against the denylist
+        env:
+          MGTK_REPO_UTILS_DENYLIST: ${{ secrets.MGTK_REPO_UTILS_DENYLIST }}
+        run: python3 scripts/dev/scan_denylist.py
