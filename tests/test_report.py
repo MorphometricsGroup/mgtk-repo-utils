@@ -40,10 +40,14 @@ def test_section_sign_is_not_used_in_messages():
 
 
 def test_version_is_the_latest_release_in_the_changelog():
+    # release-please writes `## [X.Y.Z](url) (date)`; the first release heading is the current one.
+    import re
+
     changelog = (Path(__file__).resolve().parent.parent / "CHANGELOG.md").read_text(encoding="utf-8")
-    released = [line[3:].strip() for line in changelog.splitlines()
-                if line.startswith("## ") and line[3:].strip() != "Unreleased"]
-    assert released and released[0] == __version__
+    headings = [line for line in changelog.splitlines() if line.startswith("## ")]
+    assert headings
+    found = re.search(r"\d+\.\d+\.\d+", headings[0])
+    assert found and found.group(0) == __version__, headings[0]
 
 
 def test_severity_names():

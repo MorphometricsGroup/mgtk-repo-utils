@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "python",
+  "include-component-in-tag": false,
+  "packages": {
+    ".": {
+      "package-name": "mgtk-repo-utils",
+      "extra-files": [
+        "packages/core/src/mgtk_repo_utils/__init__.py"
+      ]
+    }
+  }
+}

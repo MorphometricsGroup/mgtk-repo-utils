@@ -78,8 +78,8 @@ what is installed. The keys are specified in [docs/design.md](docs/design.md)
 
 mgtk-repo-utils succeeds repo-kit (`MorphometricsGroup/repo-kit`, 0.1.0 to
 0.3.0, archived), which shipped the same tools as a copy committed into each
-consumer. A consumer of a repo-kit copy moves in one commit; the
-[CHANGELOG](CHANGELOG.md) entry for 0.1.0 lists what it rewrites.
+consumer. A consumer of a repo-kit copy moves in one commit:
+[docs/migrations/from-repo-kit.md](docs/migrations/from-repo-kit.md).
 
 ## Development
 
@@ -89,10 +89,20 @@ uv run pytest -q
 uv run mgtk-repo-utils --help
 ```
 
-The repository is a uv workspace: `packages/core` (configuration, reports,
-file listing, tool discovery), one package per tool under `packages/`, and the
-root distribution with the command. Every distribution carries the one version
-of `packages/core/src/mgtk_repo_utils/__init__.py`; the tag equals it.
+One distribution, `mgtk-repo-utils`, holds every package: `packages/core`
+(configuration, reports, file listing, tool discovery), one directory per tool
+under `packages/`, and `src/mgtk_repo_utils_cli` (the command). The directories
+are the seams along which a tool could move to a repository of its own; until
+then they ship together, and the root `pyproject.toml` installs with pip from
+its metadata alone, which is what a pre-commit hook repository needs.
+
+Work follows GitHub Flow: a branch and a pull request into `main`, which
+requires the checks to pass. Commits follow Conventional Commits
+(`fix:`, `feat:`, `feat!:` for a change consumers must act on); release-please
+turns them into a release pull request that bumps the version in
+`pyproject.toml` and `__init__.py` and writes CHANGELOG.md, and merging it
+creates the tag `vX.Y.Z` and the GitHub release. Large consumer-facing changes
+get a page under `docs/migrations/`.
 
 CI also scans every tracked file against a denylist of names that must never
 appear here. The list is the repository secret `MGTK_REPO_UTILS_DENYLIST` (one
