@@ -125,8 +125,11 @@ is in [docs/design.md](docs/design.md).
 
 ## Issue tracking
 
-This repository keeps no issue tracker and no `issues/` directory. Requests
-and defects are tracked by its maintainers outside it.
+Work items live in [issues/](issues/README.md), a file-based tracker read and
+checked by this repository's own tools (the hooks run the pinned release, CI
+the working tree). Items describe the tool, its design and its releases, in
+English, and never name the repositories that run it. GitHub Issues is the
+way to report something from outside; an accepted report becomes an item.
 
 ## Licence
 

@@ -1,0 +1,23 @@
+# mgtk-repo-utils configuration for this repository's own tracker and links.
+# The hooks in .pre-commit-config.yaml run the pinned release; CI runs the
+# working tree (`uv run mgtk-repo-utils check`), so a change to the generated
+# output is caught in the pull request that makes it.
+schema = 1
+requires = "0.1"
+
+[issues]
+read = "tracked"
+
+[issues.fields]
+priority = ["high", "medium", "low"]
+type = ["bug", "feature", "task", "question"]
+
+[issues.views."README.md"]
+marker = "issues-active"
+columns = ["issue", "title", "priority", "created"]
+extra_columns = { blocked = ["blocked_by"] }
+sort = ["priority", "created"]
+empty = "counts"
+
+[links]
+anchors = true

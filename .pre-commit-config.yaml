@@ -1,0 +1,16 @@
+# This repository pins its own released tools like any consumer: `rev` is a
+# full commit (`prek update --freeze` moves it; `check` fails on any other
+# form). The hooks run that release; CI runs the working tree instead, so a
+# change to the generated view shows up in the pull request that makes it.
+# When a change alters the generated output, regenerate the view with
+# `uv run mgtk-repo-utils issues-view --write` and commit with the view hook
+# skipped (`SKIP=mgtk-repo-utils-issues-view`) until the release that carries
+# the change is pinned here.
+repos:
+  - repo: https://github.com/MorphometricsGroup/mgtk-repo-utils
+    rev: 31ddc08ff083180244d03c3e2fb99eb09e7d9867  # frozen: v0.2.0
+    hooks:
+      - id: mgtk-repo-utils-issues-view
+        args: [--write]
+        verbose: true
+      - id: mgtk-repo-utils-check
