@@ -53,7 +53,7 @@ Running the pinned release by hand: `prek run mgtk-repo-utils-check --all-files`
 The same distribution installs on a machine with uv:
 
 ```sh
-uv tool install "git+ssh://git@<host>/<owner>/mgtk-repo-utils@v0.1.0"
+uv tool install "git+https://github.com/MorphometricsGroup/mgtk-repo-utils@v0.1.0"
 mgtk-repo-utils check
 mgtk-repo-utils clone <id>
 mgtk-repo-utils tools        # what this installation provides
@@ -61,7 +61,7 @@ mgtk-repo-utils tools        # what this installation provides
 
 The machine chooses the release; `requires` in the consumer's
 `mgtk-repo-utils.toml` stops one that is older than the configuration needs.
-A consumer writes no second pin for this path. `uvx --from "git+ssh://…@<ref>"
+A consumer writes no second pin for this path. `uvx --from "git+https://…@<ref>"
 mgtk-repo-utils …` works too; with a tag or a branch it resolves the ref on
 every run.
 

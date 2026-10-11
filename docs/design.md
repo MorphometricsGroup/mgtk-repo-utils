@@ -1,7 +1,7 @@
 # mgtk-repo-utils — design
 
-Status: revision 5.1 (2026-10-11), designed for mgtk-repo-utils 0.1.0 and not
-yet implemented. mgtk-repo-utils is the successor of **repo-kit**
+Status: revision 5.2 (2026-10-11), current for mgtk-repo-utils 0.1.0.
+mgtk-repo-utils is the successor of **repo-kit**
 (`MorphometricsGroup/repo-kit`, releases 0.1.0 to 0.3.0, which shipped as a
 copy committed into each consumer); this document continues repo-kit's design
 document. Where it says repo-kit it means the predecessor and its releases;
@@ -237,12 +237,14 @@ that publication would have required is not needed; what remains is a review
 of the tree itself before it leaves the workshop (rollout step 9). The version
 restarts at 0.1.0 and the CHANGELOG starts clean, naming repo-kit as the
 predecessor and the archived repository as the place of the earlier history.
-Visibility follows the organisation's rule for `mgtk-` tools (members write,
-affiliates read); making it public is a change to that rule, decided there,
-and until then a consumer's CI that runs the hooks needs read access as for
-any private dependency (section 2). repo-kit's repository stays readable, with
-a pointer, until every consumer of its 0.3.x copies has moved, and is archived
-then.
+The repository is public (revision 5.2, the same day): the review of step 9
+found nothing in the tree that belongs to one organisation, the code takes
+every authority from configuration and environment, and a public repository
+spares every consumer the credentials a private hook repository would need in
+CI. The organisation's permission rule for `mgtk-` tools (members write,
+affiliates read) still applies to who may change it. repo-kit's repository
+stays readable, with a pointer, until every consumer of its 0.3.x copies has
+moved, and is archived then.
 
 ## Alternatives considered
 
@@ -464,9 +466,10 @@ Consequences, both ways:
   consumer's CI runs the same hook environment as its commits.
 - Harder: a consumer needs its hook runner, and a person's machine `uv`, to
   obtain a release — a clone on a machine that has never fetched it needs
-  this repository or a declared mirror to be reachable, and a consumer's CI
-  needs read access to a private repository as for any private dependency;
-  the pin must be a commit, which a check now enforces; mgtk-repo-utils is a uv
+  this repository or a declared mirror to be reachable (and, while the
+  repository was private, a consumer's CI needed read access as for any
+  private dependency); the pin must be a commit, which a check now enforces;
+  mgtk-repo-utils is a uv
   workspace with a build where it was a directory of files, so a packaging
   step stands between a change and a consumer.
 
@@ -616,10 +619,10 @@ fails on any other form (section 10). Hook ids are fixed across releases
 **Command.** The same distribution installs on a machine:
 
 ```sh
-uv tool install "git+ssh://git@<host>/<owner>/mgtk-repo-utils@v0.1.0"    # or @<commit>
+uv tool install "git+https://github.com/MorphometricsGroup/mgtk-repo-utils@v0.1.0"    # or @<commit>
 mgtk-repo-utils check
 mgtk-repo-utils clone <id>
-uvx --from "git+ssh://git@<host>/<owner>/mgtk-repo-utils@<commit>" mgtk-repo-utils check
+uvx --from "git+https://github.com/MorphometricsGroup/mgtk-repo-utils@<commit>" mgtk-repo-utils check
 ```
 
 The machine chooses the release; the consumer's `requires` (section 4) stops
@@ -633,13 +636,13 @@ with `#subdirectory=packages/<tool>`, its dependency on core resolved to the
 same commit. No consumer needs this today; it is what makes moving a tool to
 another repository a pin change (alternative L).
 
-**Authentication** is the machine's: SSH keys or a credential helper for the
-git URL, as for any private dependency; the tools receive none (section 17).
-An unattended caller — a hook with no terminal, CI, an agent — sets
-`GIT_TERMINAL_PROMPT=0` and an SSH command with `-o BatchMode=yes` so that a
-missing credential fails instead of waiting. A consumer's CI that runs the
-hooks needs read access to this repository, as it would for any private
-dependency. A consumer whose gate must survive this repository being
+**Authentication.** The repository is public, so reading it needs no
+credential; the `https` URL works from any hook runner, CI or machine. Where
+a consumer names an SSH URL instead, the keys are the machine's, as for any
+dependency; the tools receive none (section 17). An unattended caller — a
+hook with no terminal, CI, an agent — sets `GIT_TERMINAL_PROMPT=0` and an SSH
+command with `-o BatchMode=yes` so that a missing credential fails instead of
+waiting. A consumer whose gate must survive this repository being
 unreachable from a fresh machine declares a mirror in its own records and names
 it in the `repo:` line; `pin` finds the entry by its hook ids, not by its URL.
 
@@ -1753,7 +1756,7 @@ For the clone tools (sections 13 to 17):
 | Rejections surface on adoption | High (24 lines in one repository, 1 in the adopters, 1 already invalid) | Low | These values are truncated or unreadable today; the first `--check` lists them and quoting fixes them |
 | A consumer pins a tag or a branch, or nothing (revision 5) | Medium | Medium | `pin` fails inside `check` and the `mgtk-repo-utils-check` hook; `prek update --freeze` is the documented update path |
 | This repository becomes unreachable — deleted, moved, access revoked (revision 5) | Low | Medium | A fetched release keeps running from the hook runner's cache and `uv`'s (measured); a consumer that needs more declares a mirror in its own records and names it in `repo:`; nothing in the pin or the hook ids depends on the URL |
-| A fresh machine or CI runner cannot fetch a private repository (revision 5) | Medium | Medium | The same as for any private dependency: a key or token in the environment; `GIT_TERMINAL_PROMPT=0` and BatchMode so that it fails fast, and the failure names the fetch, not a tool |
+| A fresh machine or CI runner cannot fetch the repository (revision 5) | Low since the repository is public (revision 5.2) | Medium | Over `https` nothing is needed; with an SSH URL, a key in the environment as for any dependency; `GIT_TERMINAL_PROMPT=0` and BatchMode so that it fails fast, and the failure names the fetch, not a tool |
 | Two pins drift — a hook `rev` and a recipe's `uvx` ref (revision 5) | Medium | Low | Recipes write no ref: they call the machine's installation or derive the ref from the hook configuration; `requires` stops an old installation |
 | The workspace puts a build between a change and a consumer (revision 5) | Low | Low | `uv run mgtk-repo-utils` from a checkout runs the workspace in place; `prek try-repo <path>` runs an uncommitted checkout's hooks against a consumer |
 | The hook is not installed in a clone | High | Low | CI or the validation recipe runs `check`; a hooks-only repository accepts the gap and runs `check` by hand |
@@ -1889,6 +1892,13 @@ The distribution change (revision 5):
   `--local-env-vars`; `GIT_CONFIG_COUNT` joined the list in 2.31.
 
 ## Revision history
+
+- 2026-10-11, revision 5.2: 0.1.0 released from `MorphometricsGroup/mgtk-repo-utils`
+  and the repository made public the same day, after the review of rollout
+  step 9 (background of revision 5, last paragraph; section 2's
+  authentication; the fetch risk). The command examples use the `https` URL.
+  The first consumer moved (rollout step 11); its CI reaches the repository
+  without a credential.
 
 - 2026-10-11, revision 5.1: the tool becomes mgtk-repo-utils, governed by the
   organisation that hosts it, in a new repository that starts without
