@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import string
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -25,6 +26,11 @@ def toml_value(value: object) -> str:
     if isinstance(value, list):
         return "[" + ", ".join(toml_value(v) for v in value) + "]"
     return json.dumps(value)
+
+
+def placeholders(template: str) -> set[str]:
+    """The `{name}` fields of a message template."""
+    return {name for _, name, _, _ in string.Formatter().parse(template) if name}
 
 
 def clean_env() -> dict[str, str]:

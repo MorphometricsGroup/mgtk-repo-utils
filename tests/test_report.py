@@ -1,14 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
-import string
 from pathlib import Path
 
 from mgtk_repo_utils import __version__
 from mgtk_repo_utils.frontmatter import RULES
 from mgtk_repo_utils.report import MESSAGES, Report, message, severity_for
-
-
-def placeholders(template: str) -> set[str]:
-    return {name for _, name, _, _ in string.Formatter().parse(template) if name}
+from support import placeholders
 
 
 def test_every_message_has_both_languages_with_the_same_placeholders():
@@ -55,24 +51,29 @@ def test_severity_names():
     assert severity_for("error") == "error"
 
 
+# The reports below use core message ids only: a tool's messages enter the catalogue
+# when something runs discovery, which this file does not.
+
+
 def test_report_with_problems_and_warnings():
     report = Report("tool", "en")
-    report.error("id-missing", "b.md", 3, stem="b")
-    report.error("id-missing", "a.md", None, stem="a")
-    report.warn("status-other", "c.md", value="x")
+    report.error("cfg-required", "b.toml", 3, name="b")
+    report.error("cfg-required", "a.toml", None, name="a")
+    report.warn("tracked-missing", "c.md")
     assert report.exit_code == 1
     assert report.lines() == [
         "tool: 2 problem(s)",
-        "a.md: `id` is required; add `id: a`",
-        "b.md:3: `id` is required; add `id: b`",
+        "a.toml: `a` is required; add it",
+        "b.toml:3: `b` is required; add it",
         "tool: 1 warning(s)",
-        "c.md: status `x` is not in [issues.status]; counted as `other`",
+        "c.md: listed in the index but missing from the working tree; skipped (restore the "
+        "file or run `git rm`)",
     ]
 
 
 def test_report_with_only_warnings_exits_zero_and_ends_with_ok():
     report = Report("tool", "en")
-    report.warn("status-other", "c.md", value="x")
+    report.warn("tracked-missing", "c.md")
     assert report.exit_code == 0
     assert report.lines("3 item(s)")[-1] == "tool: ok (3 item(s))"
 
@@ -80,5 +81,5 @@ def test_report_with_only_warnings_exits_zero_and_ends_with_ok():
 def test_clean_report_is_ok_in_japanese_headers():
     assert Report("tool", "ja").lines() == ["tool: ok"]
     report = Report("tool", "ja")
-    report.error("id-missing", "a.md", stem="a")
+    report.error("cfg-required", "a.toml", name="a")
     assert report.lines()[0] == "tool: 問題 1 件"
