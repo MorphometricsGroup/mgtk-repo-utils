@@ -8,7 +8,7 @@
 # the change is pinned here.
 repos:
   - repo: https://github.com/MorphometricsGroup/mgtk-repo-utils
-    rev: 31ddc08ff083180244d03c3e2fb99eb09e7d9867  # frozen: v0.2.0
+    rev: a3ed1edb3219572da4480d8862dea86c6ad6a4f9  # frozen: v0.3.0
     hooks:
       - id: mgtk-repo-utils-issues-view
         args: [--write]
