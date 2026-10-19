@@ -7,7 +7,7 @@ from importlib.metadata import entry_points
 
 from mgtk_repo_utils import __version__
 from mgtk_repo_utils.tool import GROUP, Tool, discover
-from support import PACKAGES, REPO
+from support import PACKAGES, REPO, placeholders
 
 SKIPPED = {".git", ".venv", ".pytest_cache", "__pycache__"}
 CORE = "mgtk_repo_utils"
@@ -139,6 +139,15 @@ def test_every_tool_message_has_both_languages_and_no_section_sign():
         for msg_id, pair in tool.messages.items():
             assert len(pair) == 2 and all(pair), (tool.name, msg_id)
             assert all("§" not in text for text in pair), (tool.name, msg_id)
+
+
+def test_every_tool_message_keeps_its_placeholders_and_the_japanese_punctuation():
+    # test_report checks these rules over the core catalogue, which holds a tool's
+    # messages only once something in the same run has called discover().
+    for tool in discover().values():
+        for msg_id, (english, japanese) in tool.messages.items():
+            assert placeholders(english) == placeholders(japanese), (tool.name, msg_id)
+            assert "、" not in japanese and "。" not in japanese, (tool.name, msg_id)
 
 
 def test_two_distributions_providing_one_tool_name_are_refused():
