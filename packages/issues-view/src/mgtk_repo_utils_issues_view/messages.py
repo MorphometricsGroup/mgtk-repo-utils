@@ -109,6 +109,10 @@ MESSAGES: dict[str, tuple[str, str]] = {
         "ビュー `{view}` が追跡されていない `{id}` を載せている．"
         "ビューと一緒に item をステージする（しないと他の clone でビューが壊れる）",
     ),
+    "untracked-item": (
+        'not tracked, so the views leave it out (`read = "tracked"`); stage it to include it',
+        '追跡されていないのでビューに載らない（`read = "tracked"`）．載せるにはステージする',
+    ),
     "count-active": ("active", "active"),
     "count-deferred": ("deferred", "deferred"),
     "count-terminal": ("done", "終了"),

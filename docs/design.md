@@ -1,8 +1,10 @@
 # mgtk-repo-utils — design
 
-Status: revision 6.1 (2026-10-11), current for mgtk-repo-utils from 0.1.1; the
+Status: revision 6.2 (2026-10-19), current for mgtk-repo-utils from 0.1.1; the
 routing, selection sets and read-only queries of sections 13 to 16 are
-designed for 0.2.0 and implemented on the branch that releases it.
+designed for 0.2.0 and implemented on the branch that releases it. The
+warning of section 7 for an untracked item (revision 6.2) arrives in the
+release after 0.2.0.
 mgtk-repo-utils is the successor of **repo-kit**
 (`MorphometricsGroup/repo-kit`, releases 0.1.0 to 0.3.0, which shipped as a
 copy committed into each consumer); this document continues repo-kit's design
@@ -859,7 +861,9 @@ layout problems; under `read = "worktree"` they include frontmatter and link
 problems in untracked files. `untracked_rows` is a separate matter: a view row
 that points at an untracked item, which is the normal intermediate state of a
 hand-regenerated tracker between `--write` and staging, and is therefore a
-warning unless a repository asks for more.
+warning unless a repository asks for more. An untracked item under `read =
+"tracked"` is neither — it is not read, so it has no problem to report and
+no row — and section 7 always reports it as a warning.
 
 ### 5. File listing (shared)
 
@@ -1074,6 +1078,14 @@ Modes:
 - Both: no view is written while a problem exists. Under `read = "worktree"`,
   a view row for an untracked item is reported with the `untracked_rows`
   severity: committed without the item, it would break in every other clone.
+- Both, under `read = "tracked"` (revision 6.2): an untracked, non-ignored
+  file that passes the layout check as an item is not read, and is named in
+  a warning; the views are written without it and the exit code does not
+  change. Without the warning the run could not be told from one where the
+  file does not exist, and a passing hook reads as a current view while the
+  view leaves the item out. It never fails the run: a repository that has
+  just received a delivered item file must still commit unrelated work
+  (background).
 
 ### 8. freeze-lint
 
@@ -1833,6 +1845,10 @@ For the clone tools (sections 13 to 17):
 - Views: byte-exact regions for each archetype; an adjacent marker pair with
   zero items passes `--check` and is unchanged by `--write`; a marker quoted in
   prose is ignored.
+- Untracked items (revision 6.2): under `read = "tracked"` an untracked item
+  is named in a warning, and the exit code of `--write` and `--check` and the
+  written view are those of a run without the file; a run without one gives
+  no warning; under `read = "worktree"` the warning is not given.
 - Slugs: the slugger's own test vectors, and a fixture of Japanese headings
   with full-width punctuation and spaces.
 - Packaging (revision 5): every distribution's version equals
@@ -2063,6 +2079,12 @@ Routing, sets and read-only queries (revision 6):
 
 ## Revision history
 
+- 2026-10-19, revision 6.2: section 7 — under `read = "tracked"` an untracked
+  file that passes as an item is named in a warning. The run had printed
+  nothing about it while the view left the item out, and a passing hook was
+  read as a current view until the file was staged. Section 4 says that
+  neither `untracked` nor `untracked_rows` governs it; Tests follow. A fixed
+  warning rather than a new severity key was chosen with the maintainer.
 - 2026-10-11, revision 6: routed roots and selection sets, and read-only
   queries, designed for 0.2.0 at the request of the first consumer with such
   a registry (its decision to replace its own scripts came the same day).

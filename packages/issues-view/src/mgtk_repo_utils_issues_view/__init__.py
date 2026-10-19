@@ -142,6 +142,9 @@ class _Run:
         candidates = sorted(set(listing.files) | self.untracked)
         item_paths = self.check_layout(candidates)
         read_set = set(listing.files)
+        for path in item_paths:
+            if path not in read_set:
+                self.report.warn("untracked-item", path)
         loaded = [self.load_item(p) for p in item_paths if p in read_set]
         items = [item for item in loaded if item is not None]
         views = self.prepare_views(items)

@@ -2,10 +2,11 @@
 id: 20261019_issues-view-untracked-items-notice
 title: "issues-view: say when untracked item files are left out of the view under read = tracked"
 type: feature
-status: open
+status: closed
 priority: medium
 created: 2026-10-19
-closed:
+closed: 2026-10-19
+closed_by: "issues-view names an untracked item in a warning under read = tracked (design revision 6.2)"
 labels: [issues-view]
 blocked_by: []
 blocks: []
@@ -67,10 +68,10 @@ relative to the working tree until the file is staged.
 
 ## Acceptance criteria
 
-- [ ] A run under `read = "tracked"` makes it visible to the person reading
+- [x] A run under `read = "tracked"` makes it visible to the person reading
       the output when the items directory holds untracked, non-ignored item
       files that the view does not include.
-- [ ] A run with no such files prints nothing new and keeps its exit code.
+- [x] A run with no such files prints nothing new and keeps its exit code.
 
 ## References
 

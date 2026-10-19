@@ -42,11 +42,5 @@ hook regenerates it when a status changes (`prek install` once per clone;
 `pre-commit install` also works); CI verifies that it matches.
 
 <!-- BEGIN GENERATED: issues-active -->
-active 1 (in_progress 0, blocked 0, open 1) / deferred 0 / done 1 (closed 1, wont_fix 0)
-
-### open
-
-| issue | title | priority | created |
-|---|---|---|---|
-| [`20261019_issues-view-untracked-items-notice`](items/20261019_issues-view-untracked-items-notice.md) | issues-view: say when untracked item files are left out of the view under read = tracked | medium | 2026-10-19 |
+active 0 (in_progress 0, blocked 0, open 0) / deferred 0 / done 2 (closed 2, wont_fix 0)
 <!-- END GENERATED: issues-active -->
