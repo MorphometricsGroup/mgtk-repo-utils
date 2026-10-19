@@ -2,9 +2,8 @@
 
 Status: revision 6.2 (2026-10-19), current for mgtk-repo-utils from 0.1.1; the
 routing, selection sets and read-only queries of sections 13 to 16 are
-designed for 0.2.0 and implemented on the branch that releases it. The
-warning of section 7 for an untracked item (revision 6.2) arrives in the
-release after 0.2.0.
+released in 0.2.0, and the warning of section 7 for an untracked item
+(revision 6.2) in 0.3.0.
 mgtk-repo-utils is the successor of **repo-kit**
 (`MorphometricsGroup/repo-kit`, releases 0.1.0 to 0.3.0, which shipped as a
 copy committed into each consumer); this document continues repo-kit's design
