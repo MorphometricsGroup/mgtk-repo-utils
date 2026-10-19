@@ -8,6 +8,13 @@ a breaking change (`!`), and only a large one gets a page under
 0.1.0 to 0.3.0); its history stays there, and moving a consumer from it is
 [docs/migrations/from-repo-kit.md](docs/migrations/from-repo-kit.md).
 
+## [0.3.1](https://github.com/MorphometricsGroup/mgtk-repo-utils/compare/v0.3.0...v0.3.1) (2026-10-19)
+
+
+### Documentation
+
+* **design:** state the releases that carry revisions 6 and 6.2 ([72de234](https://github.com/MorphometricsGroup/mgtk-repo-utils/commit/72de23466bc04f72278db2d46b22b8361530e8b3))
+
 ## [0.3.0](https://github.com/MorphometricsGroup/mgtk-repo-utils/compare/v0.2.0...v0.3.0) (2026-10-19)
 
 
