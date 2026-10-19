@@ -777,6 +777,38 @@ def test_tracked_mode_ignores_an_untracked_item_in_the_view(tmp_path):
     assert "20260102_b" not in region(repo)
 
 
+def test_tracked_mode_names_an_untracked_item_in_a_warning(tmp_path):
+    repo = basic_repo(tmp_path)
+    add_issue(repo, "20260101_a", "open", priority="high")
+    repo.stage()
+    add_issue(repo, "20260102_b", "closed", priority="high", closed="2026-01-02")
+    result = repo.run("issues-view", "--write")
+    assert result.code == 0
+    assert "issues-view: 1 warning(s)" in result.out
+    assert "issues/items/20260102_b.md: not tracked, so the views leave it out" in result.out
+    assert "done 0" in region(repo)
+
+
+def test_an_untracked_item_does_not_change_the_exit_code_of_check(tmp_path):
+    repo = basic_repo(tmp_path)
+    add_issue(repo, "20260101_a", "open", priority="high")
+    repo.stage()
+    repo.run("issues-view", "--write")
+    add_issue(repo, "20260102_b", "open", priority="high")
+    result = repo.run("issues-view", "--check")
+    assert result.code == 0
+    assert "issues/items/20260102_b.md: not tracked" in result.out
+
+
+def test_tracked_mode_without_an_untracked_item_gives_no_warning(tmp_path):
+    repo = basic_repo(tmp_path)
+    add_issue(repo, "20260101_a", "open", priority="high")
+    repo.stage()
+    result = repo.run("issues-view", "--write")
+    assert result.code == 0
+    assert "warning" not in result.out
+
+
 def test_worktree_mode_includes_untracked_items_and_warns_about_the_row(tmp_path):
     config = BASIC_CONFIG.replace("[issues]\n", '[issues]\nread = "worktree"\n', 1)
     repo = basic_repo(tmp_path, config)

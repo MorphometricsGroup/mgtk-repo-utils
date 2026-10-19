@@ -38,6 +38,7 @@ repos:
     hooks:
       - id: mgtk-repo-utils-issues-view
         args: [--write]
+        verbose: true     # warnings exit 0, and pre-commit hides a passing hook's output
       - id: mgtk-repo-utils-check
 ```
 

@@ -42,5 +42,5 @@ hook regenerates it when a status changes (`prek install` once per clone;
 `pre-commit install` also works); CI verifies that it matches.
 
 <!-- BEGIN GENERATED: issues-active -->
-active 0 (in_progress 0, blocked 0, open 0) / deferred 0 / done 1 (closed 1, wont_fix 0)
+active 0 (in_progress 0, blocked 0, open 0) / deferred 0 / done 2 (closed 2, wont_fix 0)
 <!-- END GENERATED: issues-active -->
